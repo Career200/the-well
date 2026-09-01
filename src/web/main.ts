@@ -5,6 +5,7 @@ import { feelBand, feelOf, stanceLine, water } from '../core/readout.js';
 import { BELIEFS, EMOTIONS } from '../core/types.js';
 import type { LineKind } from '../core/types.js';
 import { makeShaft } from './visuals.js';
+import type { Bands } from './visuals.js';
 
 const seed = Number(new URLSearchParams(location.search).get('seed') ?? Math.floor(Math.random() * 1e5));
 let game: Game = newGame(pack, seed, { below: true });
@@ -20,7 +21,23 @@ const belongings = el('belongings');
 const meters = el('meters');
 const debug = el<HTMLPreElement>('debug');
 
-const shaft = makeShaft(el('shaft'));
+const shaft = makeShaft(el('shaft'), fitLog);
+
+/**
+ * The words live between the coin of sky and the waterline. Both edges come
+ * from the picture itself rather than from a margin somebody guessed, so
+ * moving the geometry moves the text out of its way automatically.
+ *
+ * Safe against feedback: `#log` is the flex child that absorbs slack, so
+ * shrinking it leaves the header and footer exactly where they were.
+ */
+function fitLog({ skyBottom, waterTop }: Bands): void {
+  const gap = 14;
+  const header = document.querySelector('header')!.getBoundingClientRect().bottom;
+  const footer = document.querySelector('footer')!.getBoundingClientRect().top;
+  log.style.marginTop = `${Math.max(0, skyBottom + gap - header)}px`;
+  log.style.marginBottom = `${Math.max(0, footer - waterTop + gap)}px`;
+}
 
 /**
  * The world comes into view on a clock of its own, and the clock only starts
@@ -127,6 +144,11 @@ function render(): void {
   // Push is the one stance that can be unavailable, and it says so rather than
   // letting the player spend a beat finding out. Stillness is never refused.
   el<HTMLButtonElement>('haunt-btn').disabled = presence.charge < TUNING.pressCost;
+
+  // The footer grows as belongings surface and as the debug row comes and
+  // goes, so the words have to be re-fitted to the water after every beat,
+  // not only when the shaft is laid out.
+  fitLog(shaft.bands());
 
   if (!debug.hidden) debug.textContent = dump();
 }

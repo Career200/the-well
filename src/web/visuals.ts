@@ -33,8 +33,8 @@ const hash = (x: number, y: number): number => {
 
 /** How far apart the halftone dots sit, in px. Bigger is cheaper and coarser. */
 const DOT_SPACING = 9;
-/** Wall lines around the shaft, and courses of stone between the two ends. */
-const WALLS = 14;
+/** Joints across the far wall, and courses of stone between the two ends. */
+const WALLS = 9;
 const COURSES = 8;
 /**
  * The widest the water may get, against the column of text. The shaft has to
@@ -57,8 +57,21 @@ export interface ShaftState {
   turn: number;
 }
 
+/**
+ * Where the picture leaves room for words, in viewport px. The log is fitted
+ * to these rather than to guessed margins, so the text can never end up
+ * behind the coin of sky or under the water.
+ */
+export interface Bands {
+  /** Bottom edge of the coin of sky. */
+  skyBottom: number;
+  /** The waterline — the far edge of the water. */
+  waterTop: number;
+}
+
 export interface Shaft {
   update(state: ShaftState): void;
+  bands(): Bands;
 }
 
 interface Dot {
@@ -72,7 +85,7 @@ interface Dot {
   jitter: number;
 }
 
-export function makeShaft(host: HTMLElement): Shaft {
+export function makeShaft(host: HTMLElement, onLayout?: (bands: Bands) => void): Shaft {
   const svg = svgEl('svg');
   svg.setAttribute('preserveAspectRatio', 'none'); // viewBox tracks pixel size
   svg.classList.add('scene');
@@ -125,6 +138,7 @@ export function makeShaft(host: HTMLElement): Shaft {
   let dots: Dot[] = [];
   /** Kept so a resize can redraw the water as it stood, not as glass. */
   let last: ShaftState | undefined;
+  let bands: Bands = { skyBottom: 0, waterTop: 0 };
 
   function layout(): void {
     const w = host.clientWidth || 800;
@@ -134,27 +148,34 @@ export function makeShaft(host: HTMLElement): Shaft {
     const cx = w / 2;
 
     // Forty feet up and small with it. Flattened, because you are not looking
-    // straight at it — you are lying under it.
-    const skyRx = Math.min(w * 0.1, 62);
+    // straight at it — you are lying under it. It sits in the band the log
+    // leaves clear at the top, so it never lands in the middle of a sentence.
+    const skyRx = Math.min(w * 0.09, 56);
     const skyRy = skyRx * 0.4;
-    const skyCy = Math.min(h * 0.11, 112);
+    const skyCy = Math.min(h * 0.085, 74);
 
     // The nearest thing there is — wider than the words, and not much wider.
-    // Its middle sits below the bottom edge: what you see is the far half of a
-    // surface that goes on past you.
+    // Its middle sits just off the bottom edge, near enough that the widest
+    // part of it is still on screen: that is where the walls come down to
+    // meet it, and if it is not visible the walls read as splaying past it.
     const waterRx = Math.min(w * 0.62, COLUMN * WATER_VS_COLUMN);
-    const waterRy = Math.min(h * 0.3, waterRx * 0.34);
-    const waterCy = h * 1.02;
+    const waterRy = Math.min(h * 0.3, waterRx * 0.45);
+    const waterCy = h * 0.96;
 
     attrs(coin, { cx, cy: skyCy, rx: skyRx, ry: skyRy });
     attrs(clipShape, { cx, cy: skyCy, rx: skyRx, ry: skyRy });
     attrs(head, { cx, cy: skyCy + skyRy * 0.42, rx: skyRx * 0.2, ry: skyRy * 0.4 });
     attrs(shoulders, { cx, cy: skyCy + skyRy * 1.3, rx: skyRx * 0.55, ry: skyRy * 0.62 });
 
-    // ---- the walls: same angle around the shaft, both ends --------------
+    // ---- the walls ------------------------------------------------------
+    // Nothing in the wall is drawn below the waterline, because below the
+    // waterline is water. So both the joints and the courses cover the far
+    // half of the shaft only, from the rim of the sky down to the far edge of
+    // the water, and every one of them lands on it exactly.
     wallsG.replaceChildren();
+
     for (let i = 0; i < WALLS; i++) {
-      const angle = (i / WALLS) * Math.PI * 2;
+      const angle = Math.PI + (i / (WALLS - 1)) * Math.PI; // π..2π: the far half
       const line = svgEl('line');
       attrs(line, {
         x1: cx + skyRx * Math.cos(angle),
@@ -165,17 +186,14 @@ export function makeShaft(host: HTMLElement): Shaft {
       wallsG.append(line);
     }
 
-    // Courses of stone, crowding as they go up.
+    // Courses of stone, crowding as they go up. The last one is the waterline.
     for (let k = 1; k <= COURSES; k++) {
-      const t = Math.pow(k / (COURSES + 1), 1.7);
-      const course = svgEl('ellipse');
-      attrs(course, {
-        cx,
-        cy: lerp(skyCy, waterCy, t),
-        rx: lerp(skyRx, waterRx, t),
-        ry: lerp(skyRy, waterRy, t),
-        fill: 'none',
-      });
+      const t = Math.pow(k / COURSES, 1.7);
+      const cy = lerp(skyCy, waterCy, t);
+      const rx = lerp(skyRx, waterRx, t);
+      const ry = lerp(skyRy, waterRy, t);
+      const course = svgEl('path');
+      attrs(course, { d: `M ${cx - rx} ${cy} A ${rx} ${ry} 0 0 1 ${cx + rx} ${cy}`, fill: 'none' });
       wallsG.append(course);
     }
 
@@ -204,6 +222,9 @@ export function makeShaft(host: HTMLElement): Shaft {
     }
 
     if (last) drawWater(last.charge, last.pressing, last.turn);
+
+    bands = { skyBottom: skyCy + skyRy, waterTop: waterCy - waterRy };
+    onLayout?.(bands);
   }
 
   /**
@@ -254,5 +275,6 @@ export function makeShaft(host: HTMLElement): Shaft {
       figure.classList.toggle('there', occupied);
       drawWater(charge, pressing, turn);
     },
+    bands: () => bands,
   };
 }

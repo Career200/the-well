@@ -46,7 +46,7 @@ header {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
-  padding: 1.5rem 0 0.75rem;
+  padding: 0 0 0.75rem;
   border-bottom: 1px solid var(--edge);
 }
 
@@ -58,10 +58,15 @@ h1 {
   margin: 0;
 }
 
+/* Margins, not padding: padding is inside the scroll area and scrolls away
+   with the text, which puts the coin of sky back in the middle of a sentence.
+   The values here are only the pre-script fallback — `fitLog` in main.ts sets
+   both from the shaft's own geometry. */
 #log {
   flex: 1;
   overflow-y: auto;
-  padding: 1.5rem 0;
+  margin: 4.5rem 0 5.5rem;
+  padding: 0;
   scrollbar-width: thin;
 }
 

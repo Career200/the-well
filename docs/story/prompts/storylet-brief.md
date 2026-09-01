@@ -64,7 +64,7 @@ Four in play, one held back.
 
 | who | what they are | carrying |
 | --- | --- | --- |
-| **Mira** | has drawn water from this well for a year without knowing why she hates it | grief, a little curiosity |
+| **Anna** | has drawn water from this well for a year without knowing why she hates it | grief, a little curiosity |
 | **Tomas** | whatever happened, he was there for the end of it | guilt, some fear |
 | **Anselm** | the old man who decides what the village is allowed to say out loud | a little fear |
 | **the Ferrin boy** | a child, and the only one who wants the well to be interesting | curiosity |
@@ -81,7 +81,7 @@ What the village can decide the well *is*, and there are only these four:
 Four, each one a piece of the death told sideways.
 
 - **a brass ring**, green at the edges, on a finger, on a hand in the silt —
-  tenderness. Mira's, unmistakably.
+  tenderness. Anna's, unmistakably.
 - **a tin whistle**, flattened where a boot came down — curiosity. The boy's, or
   meant for a child who never got it.
 - **a short knife**, bedded to the hilt as though it went in after you did —
@@ -147,7 +147,7 @@ story.** Tenderness does not disappear from the game, it becomes rare and
 therefore devastating — and so does information.
 
 **Recurrence.** Some content is reachable *only by repetition* — not by a stat,
-not by a flag, only by the fourth time. Mira comes for water and comes for water
+not by a flag, only by the fourth time. Anna comes for water and comes for water
 and comes for water, and on the fourth visit the text erodes into something no
 gate could have unlocked.
 

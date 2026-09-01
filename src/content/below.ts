@@ -1,9 +1,8 @@
 import type { BelowSubject } from '../core/below.js';
 
 /**
- * The nine subjects, verbatim from `docs/story/descriptions/below.md`. Five
- * ambient, four belongings. `named` is authored but unreachable in beat zero
- * (`BEAT_ZERO.md`: "names come later").
+ * The nine subjects: five ambient, four belongings. `named` is authored but
+ * unreachable in beat zero — names come later.
  */
 export const belowSubjects: Record<string, BelowSubject> = {
   cold: {
@@ -91,11 +90,7 @@ export const belowSubjects: Record<string, BelowSubject> = {
   },
 };
 
-/**
- * The ten stub blocks `BEAT_ZERO.md` §"Content" asks for — one-liners for
- * now, per `BEAT_ZERO_PLAN.md` §5: "write the real ~400 words after playing
- * it, against a rhythm that has been felt rather than specified."
- */
+/** Stub transition blocks. The real prose comes after the phase is played. */
 export const belowProse = {
   opening: [
     'Dark, and the weight of water not yet named as water.',

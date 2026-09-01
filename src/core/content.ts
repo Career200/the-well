@@ -18,14 +18,13 @@ export interface ObjectDef {
   name: string;
   /** All you can tell before looking closely. Falls back to `name`. */
   glimpse?: string;
-  /** Read when the player looks closely. This is where the death is told, obliquely. */
+  /** Read when the player looks closely. Where the death is told, obliquely. */
   look: string;
   /**
-   * Taking it up, and letting it go, once per hold it has left — first use
-   * to last. A belonging is three holds and then cold forever, so this is
-   * where that gets *felt* rather than tracked: the warmth arrives smaller
-   * each time and leaves faster, and the last entry is the one that says it
-   * is over. Falls back to the generic pair when absent.
+   * Taking it up and letting it go, first hold to last. Three holds and then
+   * cold forever, felt in the prose rather than tracked: the warmth arrives
+   * smaller each time and the last entry says it is over. Falls back to a
+   * generic pair when absent.
    */
   hold?: string[];
   release?: string[];
@@ -45,13 +44,13 @@ export interface ContentPack {
   scenes: Scene[];
   /** Starting values for the well itself. */
   well?: { attention?: Scalar; dread?: Scalar };
-  /** Lines for the empty turns between scenes. Waiting should still be a texture. */
+  /** Lines for the empty turns between scenes. Waiting is still a texture. */
   ambient?: string[];
   /** The endings. See `core/coda.ts`. */
   coda?: Coda;
   /** Beat zero's nine subjects, keyed by id. See `core/below.ts`. */
   below?: Record<string, BelowSubject>;
-  /** Beat zero's ten stub blocks. See `core/below.ts` / `BEAT_ZERO_PLAN.md` §5. */
+  /** Beat zero's transition blocks. See `core/below.ts`. */
   belowProse?: {
     opening: string[];
     toMovementII: string[];

@@ -2,9 +2,8 @@ import { clamp01 } from './types.js';
 import type { Belief, Emotion, ObjectId, PersonId, WorldState } from './types.js';
 
 /**
- * The only way content is allowed to change the world. Keeping this a data
- * union (rather than callbacks) means a scene's consequences can be inspected,
- * diffed and tested without running it.
+ * The only way content may change the world. A data union rather than
+ * callbacks, so consequences can be inspected and tested without running them.
  */
 export type Effect =
   | { kind: 'emotion'; person: PersonId; emotion: Emotion; delta: number }

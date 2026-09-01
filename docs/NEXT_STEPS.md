@@ -45,7 +45,7 @@ the well, which the current `cast`/affinity model handles fine.
 ## After that
 
 - **A scene economy.** Five one-shot scenes is a demo, not a game. Split content
-  into recurring beats (Mira comes for water, again, and again, and the text erodes
+  into recurring beats (Anna comes for water, again, and again, and the text erodes
   with `dread`) and one-shot story scenes. Add a cooldown field so repeatable
   scenes don't fire back to back.
 - **Blended resonance.** Holding two belongings at once, or holding one shortly

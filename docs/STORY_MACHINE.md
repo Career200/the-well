@@ -102,7 +102,7 @@ machine is that it reads as noise. Recurrence is the antidote, and it is the
 cheapest content in the whole design.
 
 The rule: **some content is reachable only by repetition.** Not by a stat, not by
-a flag — only by the fourth time. Mira comes for water and comes for water and
+a flag — only by the fourth time. Anna comes for water and comes for water and
 comes for water, and on the fourth visit the text erodes into something no gate
 could have unlocked. The player cannot make it happen except by letting time
 pass, which means the thing they most want is the thing they cannot spend a

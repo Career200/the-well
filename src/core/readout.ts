@@ -1,10 +1,7 @@
 /**
- * The diegetic instrument panel. Presence has one continuous display and it is
- * the surface of the water; belongings have a colder one. Both clients read
- * from here so there is exactly one place where a number becomes a sentence.
- *
- * The rule the player is meant to end up with, without ever being told it:
- * wait until the water is still again.
+ * The diegetic instrument panel: presence reads as the surface of the water,
+ * belongings as warmth. Both clients read from here, so there is one place
+ * where a number becomes a sentence.
  */
 import type { ObjectState, PresenceState, Scalar, WorldState } from './types.js';
 
@@ -40,8 +37,7 @@ export const feelOf = (object: ObjectState): string =>
 
 /**
  * The same four steps as `feelOf`, as a slug a client can colour by. Kept
- * next to it on purpose: one set of thresholds, so the word and the colour
- * can never say different things.
+ * beside it so the word and the colour can never disagree.
  */
 export const feelBand = (object: ObjectState): 'warm' | 'cooling' | 'nearly-cold' | 'cold' =>
   band(

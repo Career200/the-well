@@ -1,6 +1,6 @@
 /**
- * Deterministic RNG. The whole sim must be replayable from (seed + event log),
- * so nothing anywhere else is allowed to call Math.random().
+ * Deterministic RNG. The sim must replay from (seed + event log), so nothing
+ * else may call Math.random().
  */
 export interface Rng {
   readonly state: number;

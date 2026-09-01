@@ -1,7 +1,7 @@
 /**
- * Headless balance pass. Plays N games under a stand-in policy and reports
- * which scenes and outcomes actually get reached — the cheapest way to notice
- * that a branch is unreachable before writing prose for it.
+ * Headless balance pass: plays N games under a stand-in policy and reports
+ * which scenes and outcomes get reached, so unreachable branches show up
+ * before prose is written for them.
  *
  *   pnpm sim            # all policies, 200 runs each
  *   pnpm sim 500 haunty # one policy, more runs

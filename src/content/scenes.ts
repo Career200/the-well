@@ -10,18 +10,17 @@ const NOTICED = 0.25;
 const UNDENIABLE = 0.6;
 
 /**
- * A coin, fixed for the length of a run. Off the seed rather than the rng
- * because `requires` is a pure predicate the engine calls every turn and on
- * probe worlds — a fresh roll each time would re-flip until it passed, which
- * is not a coin at all. Deterministic, so a seed still replays exactly.
+ * A coin, fixed for the length of a run. Off the seed rather than the rng:
+ * `requires` is a pure predicate called every turn and on probe worlds, so a
+ * fresh roll would re-flip until it passed.
  */
 const coin = (seed: number): boolean => ((Math.imul(seed ^ 0x9e3779b9, 0x85ebca6b) >>> 16) & 1) === 1;
 
 export const scenes: Scene[] = [
   {
     id: 'first-water',
-    title: 'Mira draws water',
-    cast: ['mira'],
+    title: 'Anna draws water',
+    cast: ['anna'],
     weight: (s) => (s.history.length === 0 ? 4 : 1),
     beats: [
       { text: () => 'A shadow crosses the coin of sky. The rope starts down, and the bucket with it, turning.' },
@@ -34,7 +33,7 @@ export const scenes: Scene[] = [
         when: (_s, ctx) => ctx.resonance?.object === 'ring',
         text: () => 'The rope stops with the last of it still to come. She leans out over the rim, further than anyone leans out over water, and she stays there — both hands flat on the stone, not moving, for a long time. When she goes she leaves the bucket where it is.',
         effects: () => [
-          { kind: 'emotion', person: 'mira', emotion: 'grief', delta: 0.45 },
+          { kind: 'emotion', person: 'anna', emotion: 'grief', delta: 0.45 },
           { kind: 'belief', belief: 'tragedy', delta: 0.3 },
           { kind: 'well', field: 'attention', delta: 0.2 },
         ],
@@ -44,7 +43,7 @@ export const scenes: Scene[] = [
         when: (_s, ctx) => ctx.pressure >= UNDENIABLE,
         text: () => 'The bucket comes apart from her hands. She does not run at first — that is the worst of it — she stands and looks down and lets you look back, and then she runs.',
         effects: () => [
-          { kind: 'emotion', person: 'mira', emotion: 'fear', delta: 0.45 },
+          { kind: 'emotion', person: 'anna', emotion: 'fear', delta: 0.45 },
           { kind: 'belief', belief: 'haunted', delta: 0.3 },
           { kind: 'well', field: 'attention', delta: 0.2 },
           { kind: 'well', field: 'dread', delta: 0.15 },
@@ -55,7 +54,7 @@ export const scenes: Scene[] = [
         when: (_s, ctx) => ctx.pressure >= NOTICED,
         text: () => 'She stops with the bucket half up. She listens the way you listen for a thing you have decided is not there. Then she takes her water and goes, faster than she came.',
         effects: () => [
-          { kind: 'emotion', person: 'mira', emotion: 'fear', delta: 0.15 },
+          { kind: 'emotion', person: 'anna', emotion: 'fear', delta: 0.15 },
           { kind: 'belief', belief: 'mystery', delta: 0.15 },
           { kind: 'well', field: 'attention', delta: 0.1 },
         ],
@@ -155,7 +154,7 @@ export const scenes: Scene[] = [
   {
     id: 'the-hearing',
     title: 'Anselm brings the village',
-    cast: ['anselm', 'mira'],
+    cast: ['anselm', 'anna'],
     requires: (s) => notoriety(s) > 0.4 && s.history.length >= 3,
     beats: [
       { text: () => 'Many feet. More people than have ever stood around this hole at once.' },
@@ -180,7 +179,7 @@ export const scenes: Scene[] = [
         effects: () => [
           { kind: 'belief', belief: 'tragedy', delta: 0.35 },
           { kind: 'belief', belief: 'mystery', delta: 0.2 },
-          { kind: 'emotion', person: 'mira', emotion: 'grief', delta: 0.4 },
+          { kind: 'emotion', person: 'anna', emotion: 'grief', delta: 0.4 },
           { kind: 'emotion', person: 'anselm', emotion: 'fear', delta: 0.2 },
           { kind: 'flag', flag: 'body-found', value: true },
         ],
@@ -202,12 +201,9 @@ export const scenes: Scene[] = [
     requires: (s) =>
       s.history.length >= 4 &&
       notoriety(s) > 0.6 &&
-      // EXPERIMENT, and crude on purpose. We do not know whether boarding the
-      // well should stop this or only make it a nuisance — `MECHANICS.md` §4
-      // says the sealing damps the other roads, but this scene's own beats
-      // already have them taking the boards off. So: half the villages take
-      // them off, half do not, decided once per run and never re-rolled, and
-      // the sweep tells us which reads better. Delete when we know.
+      // EXPERIMENT: unclear whether boarding the well should stop this or only
+      // make it a nuisance — the beats already have them taking the boards
+      // off. Half the villages do, decided once per run. Delete when we know.
       (!s.flags['well-covered'] || coin(s.seed)),
     weight: () => 6,
     beats: [

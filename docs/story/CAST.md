@@ -25,7 +25,7 @@ Closed list. Three derive `unguarded` at cast time.
 
 ## The pool
 
-**Mira** — draws water here and does not know why she hates it.
+**Anna** — draws water here and does not know why she hates it.
 ```
 carries    grief she has stopped calling grief · denied curiosity
 affinity   ring 1.0 (hers; she gave it back) · coat 0.7 · whistle 0.3
@@ -126,7 +126,7 @@ opens      the blessing · the pair against Anselm · a public name he cannot ve
 costs      a blessed well spends `haunted` and forecloses that ending unwarned
 ```
 
-**Lisbet** — sent for water when nobody else will. Mira's kin.
+**Lisbet** — sent for water when nobody else will. Anna's kin.
 ```
 tags       sent
 carries    fear she may not act on · curiosity about being told not to
@@ -174,8 +174,8 @@ Halla   — Bern            married
 Halla   — the boy         kin          Bern — the boy    kin
 the boy — Kell            kin          cousins
 Anselm  — Tomas           kin          uncle. This is the plot
-Mira    — Tomas           estranged    they were not always
-Mira    — Lisbet          kin          which is why Lisbet is sent
+Anna    — Tomas           estranged    they were not always
+Anna    — Lisbet          kin          which is why Lisbet is sent
 Lisbet  — Rade            promised     nobody knows
 Bern    — Sev             estranged    they worked together once
 Anselm  — Orla            estranged    allies once; the disagreement is doctrinal
@@ -193,7 +193,7 @@ Starting position, before attrition.
 
 | role | who | n |
 | --- | --- | --- |
-| someone comes | Mira, Lisbet, Halla, the boy, Kell, Sev | 6 |
+| someone comes | Anna, Lisbet, Halla, the boy, Kell, Sev | 6 |
 | the other / a witness | any human | 11 |
 | a child | the boy, Kell | 2 |
 | the unguarded one | the boy, Kell, Sev, Orla + granted | 4–6 |
@@ -207,7 +207,7 @@ Starting position, before attrition.
 
 - **No barometer may declare a role with fewer than three candidates.**
 - **Single-candidate roles are legal only on plot situations.**
-- With Mira, Tomas and both children out, *someone comes* still has three and
+- With Anna, Tomas and both children out, *someone comes* still has three and
   the crowd still has five. That is what twelve was sized for.
 
 ## Mortality
@@ -224,7 +224,7 @@ it is never named, fast once it is.
 
 Three readings survive any run, and no situation may assert one:
 
-1. The ring was Mira's and she gave it back.
+1. The ring was Anna's and she gave it back.
 2. Anselm has been protecting his nephew since.
 3. Nothing here is local — the coat, the whistle carried a long way, and the
    knife the only thing anyone recognises.

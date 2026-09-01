@@ -1,16 +1,14 @@
 /**
- * The shaft, drawn from the bottom of it, as one picture.
+ * The shaft, drawn from the bottom, as one picture.
  *
- * Sky, walls and water are a single SVG in a single coordinate system, which
- * is the only way the walls can actually land on both ends: every wall line
- * starts on the rim of the coin of sky and finishes on the edge of the water,
- * at the same angle around the shaft. Resize and it is all rebuilt together,
- * so the join never drifts.
+ * Sky, walls and water share one SVG and one coordinate system, so every wall
+ * line lands on both the rim of the sky and the edge of the water at the same
+ * angle. A resize rebuilds it all together and the joins never drift.
  *
- * The viewBox is set to the host's pixel size, so nothing is ever stretched —
- * the dots stay square and the ovals keep the perspective they were drawn in.
+ * The viewBox tracks the host's pixel size, so nothing is stretched: the dots
+ * stay square and the ovals keep their perspective.
  *
- * One control, one filter, on the root: how much of any of it you can see.
+ * One control, one filter, on the root: how much of it you can see.
  */
 
 const NS = 'http://www.w3.org/2000/svg';
@@ -37,18 +35,17 @@ const DOT_SPACING = 9;
 const WALLS = 9;
 const COURSES = 8;
 /**
- * The widest the water may get, against the column of text. The shaft has to
- * read as deep, and a water oval that takes the whole viewport turns it into a
- * stocky cone — so the near edge is only a little wider than the words are.
+ * The widest the water may get, against the column of text. A water oval that
+ * fills the viewport turns the shaft into a stocky cone, so the near edge is
+ * only a little wider than the words.
  */
 const COLUMN = 640; // 40rem, matching #app
 const WATER_VS_COLUMN = 0.62;
 
 /**
- * Below this width the controls take a big enough share of the screen to bury
- * the water entirely, and the water moving is not decoration — it is how the
- * player reads *not settled yet, do not push*. So on a phone the surface comes
- * up until this much of it clears the top of the controls.
+ * Below this width the controls would bury the water, which is not decoration
+ * — it is how the player reads *not settled yet, do not push*. So the surface
+ * comes up until `MIN_WATER_BAND` of it clears them.
  */
 const NARROW = 640;
 const MIN_WATER_BAND = 64;
@@ -67,9 +64,8 @@ export interface ShaftState {
 }
 
 /**
- * Where the picture leaves room for words, in viewport px. The log is fitted
- * to these rather than to guessed margins, so the text can never end up
- * behind the coin of sky or under the water.
+ * Where the picture leaves room for words, in viewport px. The log fits to
+ * these, so text can never end up behind the sky or under the water.
  */
 export interface Bands {
   /** Bottom edge of the coin of sky. */
@@ -82,9 +78,9 @@ export interface Shaft {
   update(state: ShaftState): void;
   bands(): Bands;
   /**
-   * The room answering something the player could not do. Brief, and its own
-   * channel: the corners are already the charge's reading, so a spike of them
-   * says *that* is what just went wrong, without a number appearing anywhere.
+   * The room answering something the player could not do. The corners already
+   * read the charge, so a spike says *that* is what went wrong, without a
+   * number appearing anywhere.
    */
   flash(): void;
 }
@@ -101,10 +97,9 @@ interface Dot {
 }
 
 /**
- * `floor` reports the top of whatever covers the bottom of the screen — the
- * controls. The water is placed against it on narrow screens so it can never
- * be buried. Safe from feedback: the controls are a fixed-size flex child, so
- * their position does not depend on where the water ends up.
+ * `floor` reports the top of the controls. On narrow screens the water is
+ * placed against it so it can never be buried. Safe from feedback: the
+ * controls are a fixed-size flex child, independent of where the water lands.
  */
 export function makeShaft(host: HTMLElement, onLayout?: (bands: Bands) => void, floor?: () => number): Shaft {
   const svg = svgEl('svg');
@@ -149,8 +144,8 @@ export function makeShaft(host: HTMLElement, onLayout?: (bands: Bands) => void, 
 
   svg.append(defs, wallsG, waterG, skyG);
 
-  // The corners answering the water. Its own channel on purpose: it lands on
-  // the very first press, before the shaft itself is visible enough to read.
+  // The corners answering the water. Its own channel: it lands on the first
+  // press, before the shaft is visible enough to read.
   const corners = document.createElement('div');
   corners.className = 'agitation';
 
@@ -168,22 +163,21 @@ export function makeShaft(host: HTMLElement, onLayout?: (bands: Bands) => void, 
 
     const cx = w / 2;
 
-    // Forty feet up and small with it. Flattened, because you are not looking
-    // straight at it — you are lying under it. It sits in the band the log
-    // leaves clear at the top, so it never lands in the middle of a sentence.
+    // Forty feet up and small with it, flattened because you are lying under
+    // it. Sits in the band the log leaves clear at the top.
     const skyRx = Math.min(w * 0.09, 56);
     const skyRy = skyRx * 0.4;
     const skyCy = Math.min(h * 0.085, 74);
 
-    // The nearest thing there is — wider than the words, and not much wider.
-    // Its middle sits just off the bottom edge, near enough that the widest
-    // part of it is still on screen: that is where the walls come down to
-    // meet it, and if it is not visible the walls read as splaying past it.
+    // The nearest thing there is — wider than the words, not much wider. Its
+    // middle sits just off the bottom edge, with the widest part still on
+    // screen: that is where the walls meet it, and without it they read as
+    // splaying past.
     const waterRx = Math.min(w * 0.62, COLUMN * WATER_VS_COLUMN);
     const waterRy = Math.min(h * 0.3, waterRx * 0.45);
-    // On a phone the controls would otherwise bury it: bring the surface up
-    // until `MIN_WATER_BAND` of it clears them. The walls follow, because
-    // every one of them is drawn from these same two ellipses.
+    // On a phone the controls would bury it: bring the surface up until
+    // `MIN_WATER_BAND` clears them. The walls follow, being drawn from these
+    // same two ellipses.
     const covered = floor?.() ?? h;
     const waterCy =
       w < NARROW
@@ -196,10 +190,8 @@ export function makeShaft(host: HTMLElement, onLayout?: (bands: Bands) => void, 
     attrs(shoulders, { cx, cy: skyCy + skyRy * 1.3, rx: skyRx * 0.55, ry: skyRy * 0.62 });
 
     // ---- the walls ------------------------------------------------------
-    // Nothing in the wall is drawn below the waterline, because below the
-    // waterline is water. So both the joints and the courses cover the far
-    // half of the shaft only, from the rim of the sky down to the far edge of
-    // the water, and every one of them lands on it exactly.
+    // Nothing is drawn below the waterline. Joints and courses cover the far
+    // half only, from the rim of the sky to the far edge of the water.
     wallsG.replaceChildren();
 
     for (let i = 0; i < WALLS; i++) {
@@ -235,8 +227,8 @@ export function makeShaft(host: HTMLElement, onLayout?: (bands: Bands) => void, 
         const d = Math.hypot(nx, ny);
         if (d > 1) continue;
 
-        // Brighter toward the near edge, but the far edge keeps its weight —
-        // it is the bottom of a well, not a fade.
+        // Brighter toward the near edge, but the far edge keeps its weight:
+        // the bottom of a well, not a fade.
         const depth = clamp01(0.72 + ny * 0.5);
         const value = clamp01(depth * (1 - d * d * 0.32) + (hash(x, y) - 0.5) * 0.26);
         const base = Math.round(value * (DOT_SPACING - 2) * 2) / 2;
@@ -256,10 +248,9 @@ export function makeShaft(host: HTMLElement, onLayout?: (bands: Bands) => void, 
   }
 
   /**
-   * The water, per beat. Nothing here is a number the player is shown: a full
-   * bar is glass, and the surface goes on refusing to settle for as long as it
-   * takes the presence to gather itself back — which is the thing the economy
-   * most needs to be legible, and the thing a bar would have simply told them.
+   * The water, per beat, and the only reading of the charge the player gets:
+   * a full bar is glass, and the surface refuses to settle until the presence
+   * has gathered itself back.
    */
   function drawWater(charge: number, pressing: boolean, turn: number): void {
     const agitation = clamp01((1 - clamp01(charge)) * (pressing ? 1.3 : 1));
@@ -281,8 +272,8 @@ export function makeShaft(host: HTMLElement, onLayout?: (bands: Bands) => void, 
     }
 
     svg.classList.toggle('pressing', pressing);
-    // The corners answer first and loudest — a hint that something is wrong
-    // with the room, never a reading of how much is left.
+    // The corners answer first and loudest: something is wrong with the room,
+    // never a reading of how much is left.
     corners.style.opacity = String(agitation * (pressing ? 1 : 0.72));
   }
 
@@ -293,7 +284,7 @@ export function makeShaft(host: HTMLElement, onLayout?: (bands: Bands) => void, 
     update(state: ShaftState): void {
       const { visibility, occupied, charge, pressing, turn } = state;
       last = state;
-      // One filter, one opacity, on everything at once — the sky is no more
+      // One filter, one opacity, on everything at once: the sky is no more
       // available to the presence than the water is.
       const seen = clamp01(visibility);
       const eased = seen * seen * (3 - 2 * seen);

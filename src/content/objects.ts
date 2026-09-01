@@ -1,15 +1,13 @@
 import type { ObjectDef } from '../core/content.js';
 
 /**
- * The belongings. Each `look` is a piece of the death, told sideways — the
- * player is never told they are dead, only handed the evidence.
+ * The belongings. Each `look` is a piece of the death told sideways: the
+ * player is handed evidence, never told.
  *
- * `hold` and `release` run first use to last. Three holds is the whole of a
- * belonging, so the arc is written into the prose rather than left to a bar:
- * the warmth comes up smaller each time and goes out of it faster, and the
- * third pair is the one that closes it. Each thing cools in its own material —
- * brass, tin, cord, wool — because that is the only way the player can tell
- * them apart without a number.
+ * `hold` and `release` run first use to last — three holds is the whole of a
+ * belonging, so the arc is in the prose rather than a bar. Each cools in its
+ * own material (brass, tin, cord, wool), which is how they are told apart
+ * without a number.
  */
 export const objects: ObjectDef[] = [
   {
@@ -28,7 +26,7 @@ export const objects: ObjectDef[] = [
       'It goes cold under your hand and stays that way. Whatever she gave back is spent, and it was only ever the once.',
     ],
     emotion: 'tenderness',
-    affinity: { mira: 1, tomas: 0.4 },
+    affinity: { anna: 1, tomas: 0.4 },
     power: 0.3,
   },
   {
@@ -47,7 +45,7 @@ export const objects: ObjectDef[] = [
       'Cold, and light, and no different now from any other scrap of tin in the silt.',
     ],
     emotion: 'curiosity',
-    affinity: { boy: 1, mira: 0.3 },
+    affinity: { boy: 1, anna: 0.3 },
     power: 0.28,
   },
   {
@@ -85,7 +83,7 @@ export const objects: ObjectDef[] = [
       'It is cold through, and heavy, and it will not do that again.',
     ],
     emotion: 'grief',
-    affinity: { mira: 0.7, anselm: 0.5, tomas: 0.6 },
+    affinity: { anna: 0.7, anselm: 0.5, tomas: 0.6 },
     power: 0.3,
   },
 ];

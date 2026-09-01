@@ -5,9 +5,8 @@ export type ObjectId = string;
 export type SceneId = string;
 
 /**
- * What a living person can feel about the well and about themselves.
- * Deliberately small: every axis must be readable from behaviour up there,
- * because the player is never told any of this in words.
+ * What a living person can feel about the well and themselves. Deliberately
+ * small: every axis must be readable from behaviour, never stated.
  */
 export const EMOTIONS = ['grief', 'fear', 'guilt', 'curiosity', 'anger', 'tenderness'] as const;
 export type Emotion = (typeof EMOTIONS)[number];
@@ -19,21 +18,16 @@ export type Belief = (typeof BELIEFS)[number];
 export type Scalar = number; // conventionally clamped to [0, 1]
 
 /**
- * How a line is voiced. Four registers, and the split is by *who is speaking
- * and about what*, not by importance — a fact is not a lesser scene, it is a
- * different kind of sentence, and the client styles it as one.
+ * How a line is voiced. Split by who is speaking and about what, not by
+ * importance — a fact is not a lesser scene, and the client styles it as one.
  *
- *   scene   someone is up there and this is happening to them. A storylet's
- *           beats and its outcome, and anything the presence does inside one.
- *   fact    the world resolving, stated plainly: a subject below coming into
- *           focus, a belonging looked at or taken up, a stance landing, a
- *           refusal. Not faded — this is the register that says *something of
- *           note happened and nobody is up there to see it*.
+ *   scene   someone is up there and this is happening to them: a storylet's
+ *           beats and outcome, and what the presence does inside one.
+ *   fact    the world resolving plainly — a subject coming into focus, a
+ *           belonging held, a stance landing, a refusal. Not faded.
  *   idle    the texture of an empty turn. The only faded one.
- *   system  the run talking about itself: the stop, the phase ending. Not
- *           prose, and must never be mistaken for it.
- *   coda    the ending. The narrator, no longer inside anything, saying what
- *           the run turned out to have been. Arrives once and never again.
+ *   system  the run talking about itself: the stop, the phase ending.
+ *   coda    the ending. Arrives once and never again.
  */
 export type LineKind = 'scene' | 'fact' | 'idle' | 'system' | 'coda';
 
@@ -54,9 +48,8 @@ export interface PersonState {
 export interface ObjectState {
   id: ObjectId;
   /**
-   * The silt has given it up. Until then it cannot be looked at or held —
-   * it is not that the presence has not noticed it, it is that it is not
-   * there yet. Two arrive in beat zero; the rest have to be pressed for.
+   * The silt has given it up; until then it cannot be looked at or held. Two
+   * arrive in beat zero, the rest have to be pressed for.
    */
   found: boolean;
   /** The player has looked closely enough to know it is theirs. */
@@ -73,9 +66,8 @@ export interface WellState {
 }
 
 /**
- * What the presence is doing, and keeps doing until told otherwise. Only one at
- * a time: pressing and holding are opposed moment to moment, which is what makes
- * blending them a matter of timing rather than of playstyle.
+ * What the presence is doing, and keeps doing until told otherwise. One at a
+ * time, so blending pressing and holding is a matter of timing.
  */
 export type Stance =
   | { kind: 'still' }
@@ -107,9 +99,8 @@ export interface WorldState {
 export const clamp01 = (n: number): Scalar => (n < 0 ? 0 : n > 1 ? 1 : n);
 
 /**
- * What the village concludes when it feels a thing near the well. This is the
- * bridge from private emotion to public story: it is why a grieving person and
- * a frightened person walk away from the same night with different villages.
+ * The bridge from private emotion to public story: why a grieving person and a
+ * frightened person walk away from the same night with different villages.
  */
 export const BELIEF_OF_EMOTION: Record<Emotion, Belief> = {
   grief: 'tragedy',

@@ -11,7 +11,7 @@ export type Effect =
   | { kind: 'belief'; belief: Belief; delta: number }
   | { kind: 'well'; field: 'attention' | 'dread'; delta: number }
   | { kind: 'presence'; field: 'charge' | 'lucidity'; delta: number }
-  | { kind: 'object'; object: ObjectId; field: 'discovered'; value: boolean }
+  | { kind: 'object'; object: ObjectId; field: 'found' | 'discovered'; value: boolean }
   | { kind: 'objectCharge'; object: ObjectId; delta: number }
   | { kind: 'person'; person: PersonId; field: 'present'; value: boolean }
   | { kind: 'flag'; flag: string; value: boolean };
@@ -50,7 +50,7 @@ export function applyEffect(state: WorldState, effect: Effect): WorldState {
     case 'object': {
       const object = state.objects[effect.object];
       if (!object) return state;
-      return { ...state, objects: { ...state.objects, [object.id]: { ...object, discovered: effect.value } } };
+      return { ...state, objects: { ...state.objects, [object.id]: { ...object, [effect.field]: effect.value } } };
     }
     case 'objectCharge': {
       const object = state.objects[effect.object];

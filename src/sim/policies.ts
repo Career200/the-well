@@ -1,5 +1,5 @@
 import type { Game, PlayerAction } from '../core/engine.js';
-import { newGame, step } from '../core/engine.js';
+import { newGame, step, TUNING } from '../core/engine.js';
 import { makeRng } from '../core/rng.js';
 import type { ContentPack } from '../core/content.js';
 
@@ -12,8 +12,22 @@ export const POLICIES: Policy[] = ['idle', 'haunty', 'resonant', 'mixed'];
 
 export function choose(game: Game, pack: ContentPack, policy: Policy, roll: number): PlayerAction {
   const discovered = pack.objects.filter((o) => game.state.objects[o.id]?.discovered);
-  const undiscovered = pack.objects.filter((o) => !game.state.objects[o.id]?.discovered);
+  const undiscovered = pack.objects.filter((o) => {
+    const state = game.state.objects[o.id];
+    return state?.found && !state.discovered;
+  });
+  const buried = pack.objects.some((o) => !game.state.objects[o.id]?.found);
   const inScene = game.mode.kind === 'scene';
+
+  // Belongings have to be dug for now: the silt gives them up to pressing at
+  // nobody, which is otherwise a waste of the bar. Only the policies that
+  // intend to *use* one bother — and only out of spare charge, because a
+  // digger who empties the bar has nothing left for whoever arrives, which is
+  // the trade the mechanic exists to create.
+  const digs = policy === 'resonant' || policy === 'mixed';
+  if (!inScene && buried && digs) {
+    return game.state.presence.charge >= TUNING.pressCost * 2 ? { kind: 'haunt' } : { kind: 'still' };
+  }
 
   // Stances persist, so a stand-in player has to know when to stop. Nobody
   // sensible keeps pushing at an empty rim; holding on is a real gamble, since

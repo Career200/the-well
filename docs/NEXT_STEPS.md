@@ -89,6 +89,32 @@ minutes should still see the story move, or they'll conclude the game is broken.
 Probably the well needs a slow ambient drift toward *something* even under total
 inaction.
 
+## Parked, and worth doing before the deck grows
+
+### Looking at the nine subjects, and the lucidity queue
+
+The nine cells exist in the UI — five ambient, four belongings — but only the
+belongings do anything. Two halves, and the first is a prerequisite for the
+second:
+
+**`look` should take a subject, not just an object.** Same verb, same cost of a
+beat, printing the subject at its current tier through `tierOf`. That is what
+makes re-reading a player's choice rather than an interruption, and it is what
+`HORRORS.md` §7 needs: deterioration is only savage if re-reading is already a
+habit by the time it starts running backwards.
+
+**A tier crossing queues, it never interrupts.** When lucidity crosses a tier,
+enqueue the subjects the player has actually met — an unmet subject cannot take
+your attention — and release **one per idle turn, never during a storylet**.
+The line is a lead-in plus the subject at its new tier: *"The X takes your
+attention again. <the full block>"*.
+
+Wants two authorial decisions first: the lead-in wording (2–3 variants, since it
+will be the most repeated line in the run — the same trap the two beat-zero
+stance lines fell into), and names for the ambient five, which the grid is
+currently hardcoding as `the cold` / `the water` / `the walls` / `the sky` /
+`the silt`.
+
 ## Not doing yet
 
 3D, audio, art, save/load UI, anything about the camera. None of it tells us

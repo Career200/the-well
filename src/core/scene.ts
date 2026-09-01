@@ -43,6 +43,11 @@ export interface Scene {
   weight?: (state: WorldState) => number;
   /** Scenes are once-only unless this is true. */
   repeatable?: boolean;
+  /**
+   * The last step of a road: the run ends on it. See `MECHANICS.md` §4 — a
+   * terminal is one of the two doors out, the other being starvation.
+   */
+  terminal?: boolean;
   beats: Beat[];
   outcomes: Outcome[];
 }

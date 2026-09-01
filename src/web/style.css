@@ -18,19 +18,25 @@ body {
   margin: 0;
   background: radial-gradient(120% 90% at 50% -20%, #23211b 0%, var(--stone) 60%);
   color: var(--ink);
-  font: 16px/1.65 Georgia, 'Iowan Old Style', serif;
+  /* Scales down on a phone so twelve lines still fit the band, and never
+     grows past comfortable on a desktop. */
+  font: clamp(14px, 1.15vw + 10px, 17px) / 1.6 Georgia, 'Iowan Old Style', serif;
   min-height: 100vh;
 }
 
 body { overflow-x: hidden; }
 
+/* A narrow measure — ~52 characters, short of comfortable on purpose. Wide
+   columns read as room; this one should read as a shaft. The side padding
+   gives some of itself back on a phone, but never all of it. */
 #app {
-  max-width: 40rem;
+  max-width: 28rem;
   margin: 0 auto;
-  padding: 0 1.25rem 1rem;
+  padding: 0 clamp(0.75rem, 3vw, 1.25rem) 0.75rem;
   display: flex;
   flex-direction: column;
   height: 100vh;
+  height: 100dvh;
   position: relative;
 }
 
@@ -62,17 +68,38 @@ h1 {
    with the text, which puts the coin of sky back in the middle of a sentence.
    The values here are only the pre-script fallback — `fitLog` in main.ts sets
    both from the shaft's own geometry. */
+/* No scrollback and no scrollbar. Lines stack to the bottom of the band, and
+   what will not fit rises out of the top and is gone — the room is what you
+   can see, and nothing down here is ever recovered. */
 #log {
   flex: 1;
-  overflow-y: auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  overflow: hidden;
   margin: 4.5rem 0 5.5rem;
   padding: 0;
+  /* What is on its way out dissolves rather than being guillotined. */
+  mask-image: linear-gradient(to bottom, transparent 0, #000 3.5rem);
+}
+
+/* Once the coda is the only thing left: from the top, whole, and re-readable.
+   The scrollbar comes back for exactly this — an ending you cannot get to the
+   end of is not an ending. */
+#log.ended {
+  justify-content: flex-start;
+  overflow-y: auto;
+  mask-image: none;
   scrollbar-width: thin;
 }
 
 #log p {
   margin: 0 0 1.25rem;
-  animation: surface 0.9s ease-out;
+  /* `backwards` matters: a staggered line must hold at the animation's first
+     frame — invisible — through its delay, or the whole batch flashes in at
+     once and the stagger does nothing. */
+  animation: surface 0.4s ease-out backwards;
   /* The words cross the halftone now that nothing is laid over it. A dark
      halo keeps them readable without painting any of the water out. */
   text-shadow: 0 1px 4px rgba(10, 9, 8, 0.92), 0 0 12px rgba(10, 9, 8, 0.75);
@@ -96,6 +123,22 @@ h1 {
 #log p.idle {
   color: var(--dim);
   font-style: italic;
+}
+
+/* coda — the ending. The brightest and the slowest thing on the page, and the
+   only text with room around it: nothing follows it, so nothing has to be
+   left space for. */
+#log p.coda {
+  color: #f2ece1;
+  line-height: 1.7;
+  margin-bottom: 1.15rem;
+}
+
+/* No rule above it once the coda stands alone — there is nothing to divide
+   it from any more. */
+#log:not(.ended) p.coda:first-of-type {
+  border-top: 1px solid var(--edge);
+  padding-top: 1.5rem;
 }
 
 /* system — the run talking about itself. Set apart by a rule rather than by
@@ -130,19 +173,188 @@ footer {
   padding-top: 1.35rem;
 }
 
-.actions {
-  display: flex;
-  gap: 0.6rem;
-  margin-bottom: 0.9rem;
+/* The run is over: the controls fold away and the words take the shaft. */
+footer.gone {
+  display: none;
 }
 
-/* Under the surface, and empty until something startles the silt. */
-#belongings {
+.actions {
   display: flex;
-  flex-wrap: wrap;
   gap: 0.5rem;
-  min-height: 2.1rem;
+  margin-bottom: 0.6rem;
 }
+
+.actions button { flex: 1; }
+
+/* Everything there is, three by three, reserved at full size from the first
+   frame. It never grows, never wraps and never reorders — the only thing that
+   ever changes here is whether a cell is lit. */
+#subjects {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.35rem;
+}
+
+.cell {
+  position: relative;
+  padding: 0.45rem 0.3rem;
+  font-size: 0.78em;
+  text-align: center;
+  overflow: hidden;
+}
+
+.cell .label {
+  display: block;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Nothing has a name until you have met it. The box stays exactly the size it
+   will be, so the grid never moves — only the word arrives. */
+.cell:not(.lit) .label { visibility: hidden; }
+
+/* The light a thing calls with: a warm bloom leaning out of one corner, set
+   per cell in `main.ts` so each belonging always calls from its own side. It
+   is an outer glow rather than an overlay, so nothing ever washes the label.
+   `--rest` is the shadow every button already carries.
+
+   Not cell-specific: `be still` calls with the same voice when there is
+   nothing left to push with, because that is the same kind of sentence —
+   *this one is asking for you*. */
+button {
+  --rest: 0 3px 16px rgba(0, 0, 0, 0.6);
+  --glow-dx: -8px;
+  --glow-dy: -8px;
+  /* So `.hinting`'s wash can anchor to the button and sit behind its face. */
+  position: relative;
+}
+
+/* Still unexamined: slow, and impossible to miss on the upswing. */
+.calling { animation: calling 4.5s ease-in-out infinite; }
+
+/* The quieter of the two. Not an edge at all — a soft wash gathering behind
+   the button, the same shape and colour as the agitation over the whole
+   screen, because it is the same fact told smaller: the water is not ready.
+   Warm light is a thing asking for you; this cold one is only the room. */
+.hinting::before {
+  content: '';
+  position: absolute;
+  inset: -110% -35%;
+  pointer-events: none;
+  border-radius: 50%;
+  background: radial-gradient(closest-side, rgba(160, 172, 180, 0.26), transparent 72%);
+  animation: hinting 5s ease-in-out infinite;
+  z-index: -1;
+}
+
+@keyframes hinting {
+  0%, 100% { opacity: 0.25; }
+  50% { opacity: 1; }
+}
+
+/* Coming out of the silt: once, fast, and brighter than the call. Declared
+   after `.calling` so it wins for as long as it runs. */
+.surfacing { animation: call-in 0.75s ease-out; }
+
+/* A click landing. The button that was pressed says so, and — when a cell
+   turns out to have been a push — the push button says so at the same moment,
+   which is the whole of how that gets taught.
+
+   Only a `from` keyframe: the browser builds the `to` from the element's own
+   styles, so one animation serves a lit cell, an unlit one and a stance
+   button without knowing what any of them look like at rest. */
+.acted { animation: acted 0.4s ease-out; }
+
+@keyframes acted {
+  from {
+    border-color: #b39a63;
+    color: #f2e6c8;
+    box-shadow: var(--rest), 0 0 20px -2px rgba(247, 230, 173, 0.75);
+  }
+}
+
+/* Nothing left to push with. Cold, not warm — this is the water's channel,
+   not a thing calling — and longer than a click so it reads as the answer to
+   what just failed rather than as feedback for the press itself. */
+.refused { animation: refused 1s ease-out; }
+
+@keyframes refused {
+  from {
+    border-color: #8f9ba2;
+    color: #eaf1f4;
+    box-shadow: var(--rest), 0 0 28px -2px rgba(160, 172, 180, 0.9);
+  }
+}
+
+@keyframes calling {
+  0%, 100% {
+    box-shadow: var(--rest);
+    border-color: #302d27;
+    color: #565247;
+  }
+  50% {
+    box-shadow: var(--rest), var(--glow-dx) var(--glow-dy) 20px -3px rgba(247, 230, 173, 0.62);
+    border-color: #6f6244;
+    color: #b9a883;
+  }
+}
+
+@keyframes call-in {
+  0% {
+    box-shadow: var(--rest);
+    border-color: #302d27;
+    color: #565247;
+  }
+  22% {
+    box-shadow: var(--rest), var(--glow-dx) var(--glow-dy) 30px -1px rgba(252, 240, 199, 0.95);
+    border-color: #b39a63;
+    color: #f2e6c8;
+  }
+  100% {
+    box-shadow: var(--rest);
+    border-color: #302d27;
+    color: #565247;
+  }
+}
+
+/* A thing that will not stop pulsing is a thing you cannot look away from, so
+   the endless call goes away — but it is replaced by a state that is just as
+   loud held still, because *this one is asking for you* is information, not
+   decoration, and a reader who turns motion off still needs it.
+
+   The arrival keeps its animation: it is a one-shot tint with no movement in
+   it at all, which is not what reduced motion is protecting against. */
+@media (prefers-reduced-motion: reduce) {
+  /* `.acted`, `.refused` and the corner flash all survive here: they are
+     one-shot tints answering a click the player just made — feedback, not
+     ambience — and there is no movement in any of them. Only the endless
+     pulse goes. */
+  .calling {
+    animation: none;
+    box-shadow: var(--rest), var(--glow-dx) var(--glow-dy) 20px -3px rgba(247, 230, 173, 0.5);
+    border-color: #6f6244;
+    color: #cbb992;
+  }
+  .surfacing { animation-duration: 0.45s; }
+  .hinting::before { animation: none; opacity: 0.8; }
+}
+
+/* Unmet: legible, but only just. The cell has to be readable — the whole
+   point of reserving all nine is that you can see there are exactly nine and
+   there will never be a tenth — while still being plainly not-yet-yours. */
+.cell:not(.lit) {
+  color: #565247;
+  /* Opaque enough to stay legible where the grid crosses the brightest part
+     of the halftone, which is exactly where the bottom row sits. */
+  background: rgba(24, 23, 19, 0.82);
+  border-color: #302d27;
+  box-shadow: none;
+}
+
+/* Disabled cells keep their own dimming rather than stacking another. */
+.cell:not(.lit):disabled { opacity: 1; }
+.cell:disabled { opacity: 0.75; }
 
 button {
   font: inherit;
@@ -224,6 +436,13 @@ body.debug #meters {
   transition: opacity 0.7s ease-out, filter 0.7s ease-out;
 }
 
+/* The ending takes its time going out. The water is the brightest thing on
+   the page and the coda is laid straight over it, so the picture goes down
+   slowly enough to read as the place receding rather than as a light switch. */
+#shaft.receding .scene {
+  transition: opacity 4s ease-in-out, filter 4s ease-in-out;
+}
+
 /* The walls: under the words on purpose, and faint enough that no message
    type loses contrast crossing them — grey at the ink's own hue, never a
    colour of its own. */
@@ -256,6 +475,25 @@ body.debug #meters {
   transition: opacity 0.5s ease-out;
   background:
     radial-gradient(ellipse 78% 62% at 50% 55%, transparent 45%, rgba(154, 165, 172, 0.16) 100%);
+}
+
+/* The whole room flinching, for as long as it takes to notice. Overrides the
+   inline opacity `main.ts` sets, because animations outrank inline styles. */
+#shaft .agitation.flash { animation: agitation-flash 1s ease-out; }
+
+@keyframes agitation-flash {
+  0% { opacity: 0.95; filter: brightness(2.1); }
+  35% { opacity: 0.8; filter: brightness(1.7); }
+}
+
+/* On a phone there is less water in view and less screen for the glow to
+   gather in, so both readings of the charge get thinner exactly where they
+   are needed most. Tighten the clear centre and lift the edges. */
+@media (max-width: 640px) {
+  #shaft .agitation {
+    background:
+      radial-gradient(ellipse 66% 50% at 50% 52%, transparent 28%, rgba(160, 172, 180, 0.3) 100%);
+  }
 }
 
 #shaft .figure {

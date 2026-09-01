@@ -9,6 +9,14 @@ const feel = (state: WorldState, person: PersonId, emotion: Emotion): number =>
 const NOTICED = 0.25;
 const UNDENIABLE = 0.6;
 
+/**
+ * A coin, fixed for the length of a run. Off the seed rather than the rng
+ * because `requires` is a pure predicate the engine calls every turn and on
+ * probe worlds — a fresh roll each time would re-flip until it passed, which
+ * is not a coin at all. Deterministic, so a seed still replays exactly.
+ */
+const coin = (seed: number): boolean => ((Math.imul(seed ^ 0x9e3779b9, 0x85ebca6b) >>> 16) & 1) === 1;
+
 export const scenes: Scene[] = [
   {
     id: 'first-water',
@@ -179,8 +187,18 @@ export const scenes: Scene[] = [
   {
     id: 'the-throwing',
     title: 'The throwing',
+    terminal: true,
     cast: ['tomas'],
-    requires: (s) => s.history.length >= 4 && notoriety(s) > 0.6,
+    requires: (s) =>
+      s.history.length >= 4 &&
+      notoriety(s) > 0.6 &&
+      // EXPERIMENT, and crude on purpose. We do not know whether boarding the
+      // well should stop this or only make it a nuisance — `MECHANICS.md` §4
+      // says the sealing damps the other roads, but this scene's own beats
+      // already have them taking the boards off. So: half the villages take
+      // them off, half do not, decided once per run and never re-rolled, and
+      // the sweep tells us which reads better. Delete when we know.
+      (!s.flags['well-covered'] || coin(s.seed)),
     weight: () => 6,
     beats: [
       { text: () => 'Two sets of feet, and one of them is not walking on purpose.' },

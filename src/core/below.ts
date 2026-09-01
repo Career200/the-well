@@ -51,6 +51,10 @@ export interface BelowPhase {
   seen: Partial<Record<ObjectId, 'glimpse' | 'plain'>>;
   wasLow: boolean;
   exhausted: boolean;
+  /** Consecutive turns that narrated nothing. See `BELOW_TUNING.quietRun`. */
+  quiet: number;
+  /** Every line already said down here. Nothing is ever said twice. */
+  said: string[];
 }
 
 /**
@@ -67,6 +71,13 @@ export const BELOW_TUNING = {
   lowFloor: 0.2,
   /** Turns between one ambient subject resolving and the next, in the dark. */
   ambientEvery: 2,
+  /**
+   * Silent turns to allow before the dark says something about itself. One
+   * quiet beat is not dead air — the water answers every press and settles
+   * visibly on every still turn — so filling every gap with a line makes the
+   * phase read as chattier than it is.
+   */
+  quietRun: 2,
 } as const;
 
 /** Drawn from the seeded rng, so a run's pair is reproducible from its seed. */
@@ -85,7 +96,39 @@ export function startBelow(pick: () => number, belongingIds: readonly ObjectId[]
     seen: {},
     wasLow: false,
     exhausted: false,
+    quiet: 0,
+    said: [],
   };
+}
+
+/**
+ * Beat zero is short, linear, and read closely, so a sentence the player has
+ * already had lands as the machine showing through. Nothing repeats: a line
+ * already said is dropped, and the turn goes by on the water alone — which is
+ * legible now that the surface answers every press and settles on every still
+ * turn. Once the phase is over the ordinary run has no such rule; repetition
+ * up there is `times.withCast`'s job, and it is a feature.
+ */
+export function unsaid(phase: BelowPhase, lines: readonly string[]): { phase: BelowPhase; keep: boolean[] } {
+  const said = new Set(phase.said);
+  const keep = lines.map((text) => {
+    if (said.has(text)) return false;
+    said.add(text);
+    return true;
+  });
+  return { phase: { ...phase, said: [...said] }, keep };
+}
+
+/**
+ * Whether the dark should say something about itself this turn, given the
+ * turn narrated nothing on its own. Returns the phase either way, because the
+ * run of silence is state like anything else.
+ */
+export function fillSilence(phase: BelowPhase, narrated: boolean): { phase: BelowPhase; speak: boolean } {
+  if (narrated) return { phase: { ...phase, quiet: 0 }, speak: false };
+  const quiet = phase.quiet + 1;
+  if (quiet <= BELOW_TUNING.quietRun) return { phase: { ...phase, quiet }, speak: false };
+  return { phase: { ...phase, quiet: 0 }, speak: true };
 }
 
 export type BelowEvent =

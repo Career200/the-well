@@ -44,6 +44,15 @@ const COURSES = 8;
 const COLUMN = 640; // 40rem, matching #app
 const WATER_VS_COLUMN = 0.62;
 
+/**
+ * Below this width the controls take a big enough share of the screen to bury
+ * the water entirely, and the water moving is not decoration — it is how the
+ * player reads *not settled yet, do not push*. So on a phone the surface comes
+ * up until this much of it clears the top of the controls.
+ */
+const NARROW = 640;
+const MIN_WATER_BAND = 64;
+
 export interface ShaftState {
   /** 0 — barely there. 1 — as much of it as there is ever going to be. */
   visibility: number;
@@ -85,7 +94,13 @@ interface Dot {
   jitter: number;
 }
 
-export function makeShaft(host: HTMLElement, onLayout?: (bands: Bands) => void): Shaft {
+/**
+ * `floor` reports the top of whatever covers the bottom of the screen — the
+ * controls. The water is placed against it on narrow screens so it can never
+ * be buried. Safe from feedback: the controls are a fixed-size flex child, so
+ * their position does not depend on where the water ends up.
+ */
+export function makeShaft(host: HTMLElement, onLayout?: (bands: Bands) => void, floor?: () => number): Shaft {
   const svg = svgEl('svg');
   svg.setAttribute('preserveAspectRatio', 'none'); // viewBox tracks pixel size
   svg.classList.add('scene');
@@ -160,7 +175,14 @@ export function makeShaft(host: HTMLElement, onLayout?: (bands: Bands) => void):
     // meet it, and if it is not visible the walls read as splaying past it.
     const waterRx = Math.min(w * 0.62, COLUMN * WATER_VS_COLUMN);
     const waterRy = Math.min(h * 0.3, waterRx * 0.45);
-    const waterCy = h * 0.96;
+    // On a phone the controls would otherwise bury it: bring the surface up
+    // until `MIN_WATER_BAND` of it clears them. The walls follow, because
+    // every one of them is drawn from these same two ellipses.
+    const covered = floor?.() ?? h;
+    const waterCy =
+      w < NARROW
+        ? Math.min(h * 0.96, covered - MIN_WATER_BAND + waterRy)
+        : h * 0.96;
 
     attrs(coin, { cx, cy: skyCy, rx: skyRx, ry: skyRy });
     attrs(clipShape, { cx, cy: skyCy, rx: skyRx, ry: skyRy });

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { newGame, step, TUNING } from '../src/core/engine.js';
+import { newGame, NOTHING_NEW, step, TUNING } from '../src/core/engine.js';
 import type { PlayerAction } from '../src/core/engine.js';
 import { pack } from '../src/content/index.js';
 import { BELOW_TUNING, tierOf } from '../src/core/below.js';
@@ -68,6 +68,32 @@ describe('beat zero', () => {
     expect(game.state.turn).toBe(before + 1);
     // looking at it is not taking it up
     expect(game.state.presence.stance.kind).not.toBe('holding');
+  });
+
+  it('never says the same thing twice', () => {
+    // The phase is short and linear enough that a repeated sentence reads as
+    // the machine showing through. Repetition is the run's tool, not this one's.
+    for (const seed of [1, 3, 8, 42]) {
+      let game = newGame(pack, seed, { below: true });
+      const said: string[] = [];
+      let turns = 0;
+      while (game.mode.kind === 'below' && turns < BELOW_TUNING.cap) {
+        const glimpsed = Object.entries(game.mode.phase.seen).find(([, seen]) => seen === 'glimpse');
+        const action: PlayerAction = glimpsed
+          ? { kind: 'look', object: glimpsed[0]! }
+          : game.state.presence.charge >= TUNING.pressCost
+            ? { kind: 'haunt' }
+            : { kind: 'still' };
+        const result = step(game, action);
+        game = result.game;
+        turns++;
+        // The ellipsis is the one thing allowed to repeat: it is what a turn
+        // says when everything it had was already said.
+        for (const line of result.lines) if (line.text !== NOTHING_NEW) said.push(line.text);
+      }
+      expect(said.length, `seed ${seed} said nothing`).toBeGreaterThan(8);
+      expect(new Set(said).size, `seed ${seed} repeated a line`).toBe(said.length);
+    }
   });
 
   it('exactly two belongings are reachable, and the pair is stable for a seed', () => {

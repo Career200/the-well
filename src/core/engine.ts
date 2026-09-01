@@ -6,7 +6,7 @@ import { resolveOutcome } from './scene.js';
 import type { Scene, SceneContext } from './scene.js';
 import { initWorld } from './content.js';
 import type { ContentPack, ObjectDef } from './content.js';
-import { advanceBelow, lookBelow, startBelow } from './below.js';
+import { advanceBelow, fillSilence, lookBelow, startBelow, unsaid } from './below.js';
 import type { BelowEvent, BelowPhase } from './below.js';
 import { BELIEF_OF_EMOTION, BELIEFS } from './types.js';
 import type { NarrationLine, ObjectId, SceneId, Stance, WorldState } from './types.js';
@@ -31,6 +31,36 @@ export type PlayerAction =
  * a run in which the presence never once acts stays dark.
  */
 export const HAS_PRESSED = 'presence.has-pressed';
+
+/** Set by the first refusal, so the one that states the rule is only said once. */
+const HAS_BEEN_REFUSED = 'presence.has-been-refused';
+
+/**
+ * Pushing with nothing left. Three, because in beat zero the cells push too
+ * and a player finding that out will hit this several times in a row — one
+ * line said three times reads as a broken button, and no line at all reads as
+ * a broken game.
+ *
+ * The first states the rule and is only ever said once; the others are the
+ * same fact without the instruction, because being told twice how to play is
+ * worse than not being told at all.
+ */
+const TOO_THIN = [
+  'Nothing happens. You are too thin. You have to be still for a while first.',
+  'You try again. The water does not even notice.',
+  'Nothing moves. Not the water, and not you.',
+];
+
+/**
+ * What a turn says when everything it had to say has already been said. Beat
+ * zero never repeats itself, and a click that narrates nothing at all reads as
+ * a dead control — so the turn admits there is nothing new here and leaves the
+ * player to work out that they already have what this was going to give them.
+ *
+ * Exempt from the no-repeat rule, deliberately: it is the one thing down here
+ * allowed to be said over and over.
+ */
+export const NOTHING_NEW = '…';
 
 const scene = (text: string): NarrationLine => ({ kind: 'scene', text });
 const fact = (text: string): NarrationLine => ({ kind: 'fact', text });
@@ -230,7 +260,11 @@ export function step(game: Game, action: PlayerAction): StepResult {
     }
     case 'haunt': {
       if (next.state.presence.charge < TUNING.pressCost) {
-        lines.push(fact('Nothing happens. You are too thin. You have to be still for a while first.'));
+        const taught = next.state.flags[HAS_BEEN_REFUSED] === true;
+        lines.push(fact(taught ? TOO_THIN[1 + (next.state.turn % 2)]! : TOO_THIN[0]!));
+        if (!taught) {
+          next = withState(next, applyEffects(next.state, [{ kind: 'flag', flag: HAS_BEEN_REFUSED, value: true }]));
+        }
         break;
       }
       if (next.state.presence.stance.kind !== 'pressing') {
@@ -355,18 +389,37 @@ function advanceBelowMode(
   });
 
   let next: Game = { ...game, mode: { kind: 'below', phase } };
+  let ended = false;
   for (const event of events) {
     lines.push(...belowEventLines(next, event));
-    if (event.kind === 'end') next = { ...next, mode: { kind: 'idle' } };
+    if (event.kind === 'end') ended = true;
   }
-  // A turn always says something, or a click reads as a dead control. Down
-  // here the something is the dark going on being the dark.
-  if (lines.length === 0) {
-    const pool = next.pack.belowProse?.settling ?? [];
+
+  // Nothing is said twice down here. The guard covers every source at once —
+  // the stance lines from `tick`, the subjects, the transitions — because it
+  // filters the finished turn rather than each place that writes one.
+  const guard = unsaid(phase, lines.map((line) => line.text));
+  let fresh = lines.filter((_, i) => guard.keep[i]);
+  const swallowed = lines.length > 0 && fresh.length === 0;
+
+  // A run of silent turns eventually says something about the dark — but not
+  // every gap, because down here the water answers on its own.
+  const silence = fillSilence(guard.phase, fresh.length > 0);
+  let settled = silence.phase;
+  if (silence.speak) {
+    const pool = (next.pack.belowProse?.settling ?? []).filter((line) => !settled.said.includes(line));
     const line = pool[Math.floor(next.rng.next() * pool.length)];
-    if (line) lines.push(idle(line));
+    if (line) {
+      fresh = [...fresh, idle(line)];
+      settled = { ...settled, said: [...settled.said, line] };
+    }
+  } else if (swallowed) {
+    // Everything this turn had was already said. Say so, rather than nothing.
+    fresh = [idle(NOTHING_NEW)];
   }
-  return { game: next, lines };
+
+  next = { ...next, mode: ended ? { kind: 'idle' } : { kind: 'below', phase: settled } };
+  return { game: next, lines: fresh };
 }
 
 function belowEventLines(game: Game, event: BelowEvent): NarrationLine[] {

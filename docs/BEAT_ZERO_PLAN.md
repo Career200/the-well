@@ -166,7 +166,45 @@ the phase always terminates — every stance sequence, including all-still
 exactly two belongings are reachable, and the pair is stable for a seed
 ```
 
-## 8. Done when
+## 8. Measured — first pass, stub prose
+
+Steps 1–5 built, step 4 taken. Against §4's two open numbers and `DIALS.md` §1's
+assumptions:
+
+| | measured | was assumed |
+| --- | --- | --- |
+| turns to complete, played actively | **12**, identical across 8 seeds | 12–16 |
+| words per turn | **21** | ~29 |
+| lines per turn | 1.58 | — |
+| seconds per beat | **8–14**, familiar hands | ~10 |
+
+Familiar player: **1.6–2.8 min.** First time, doubled: **3.2–5.6 min.** Replay,
+halved: **0.8–1.4 min.**
+
+Two things follow, and the second is the one that matters.
+
+**Recovery lands on partial, as §4 hoped.** The transition into III fires on a
+partial bar rather than a full one, so movement II costs 3–4 still turns rather
+than seven, and the phase does not stall in the dark.
+
+> **Beat zero is two to four times its own spec.** `BEAT_ZERO.md` opens with
+> "the first ninety seconds"; a first-time player is spending three to five
+> minutes down there, against a whole quiet run of 9–11. That is a third to a
+> half of the run before anybody appears at the rim.
+
+The knobs, in order of bluntness: `ambientEvery` 2 → 1 resolves the five in five
+turns rather than ten and lands the phase near **8 turns**, which is ~90 s for a
+familiar player and ~3 min first time; `cap` 16 → 10 bounds the worst case. Both
+are one line. Neither is worth spending until the real prose exists, because the
+words-per-turn figure moves with it.
+
+**Repetition, since fixed.** The first pass repeated a quarter of its lines —
+the press line four times, the stillness line three — because both are single
+fixed strings. Beat zero now says nothing twice (`unsaid`, `core/below.ts`); the
+turn passes on the water instead, which reads as intended now that the surface
+answers every press.
+
+## 9. Done when
 
 `pnpm play` opens in the dark, resolves the ambient five whatever the player
 does, reveals two belongings to a player who acts, ends on the light crossing,

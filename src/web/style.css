@@ -1,0 +1,290 @@
+:root {
+  color-scheme: dark;
+  --ink: #cfc8bd;
+  --dim: #6d675e;
+  --stone: #14130f;
+  --wet: #1d1c17;
+  --edge: #2b2924;
+  --cold: #7d94a3;
+  /* A belonging's temperature, warm down to spent. One direction only. */
+  --warm: #c98f5c;
+  --cooling: #9d8a72;
+  --spent: #5c5850;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: radial-gradient(120% 90% at 50% -20%, #23211b 0%, var(--stone) 60%);
+  color: var(--ink);
+  font: 16px/1.65 Georgia, 'Iowan Old Style', serif;
+  min-height: 100vh;
+}
+
+body { overflow-x: hidden; }
+
+#app {
+  max-width: 40rem;
+  margin: 0 auto;
+  padding: 0 1.25rem 1rem;
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  position: relative;
+}
+
+/* Everything the player reads sits above the shaft. */
+#app > header,
+#app > #log,
+#app > footer {
+  position: relative;
+  z-index: 1;
+}
+
+header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  padding: 1.5rem 0 0.75rem;
+  border-bottom: 1px solid var(--edge);
+}
+
+h1 {
+  font-size: 0.85rem;
+  font-weight: normal;
+  letter-spacing: 0.4em;
+  color: var(--dim);
+  margin: 0;
+}
+
+#log {
+  flex: 1;
+  overflow-y: auto;
+  padding: 1.5rem 0;
+  scrollbar-width: thin;
+}
+
+#log p {
+  margin: 0 0 1.25rem;
+  animation: surface 0.9s ease-out;
+  /* The words cross the halftone now that nothing is laid over it. A dark
+     halo keeps them readable without painting any of the water out. */
+  text-shadow: 0 1px 4px rgba(10, 9, 8, 0.92), 0 0 12px rgba(10, 9, 8, 0.75);
+}
+
+/* The four registers. See `LineKind` in core/types.ts — the engine decides
+   which one a line is spoken in, and this is the only place it is dressed. */
+
+/* scene — someone is up there. The brightest thing on the page. */
+#log p.scene { color: #efe7da; }
+
+/* fact — the world resolving, stated plainly. Not faded: quieter than a
+   scene, but it is the voice of things happening, so it holds the page. */
+#log p.fact {
+  color: var(--ink);
+  border-left: 1px solid var(--edge);
+  padding-left: 1rem;
+}
+
+/* idle — an empty turn. The only faded one, and the only italic one. */
+#log p.idle {
+  color: var(--dim);
+  font-style: italic;
+}
+
+/* system — the run talking about itself. Set apart by a rule rather than by
+   being shrunk: these are whole sentences and have to stay readable. */
+#log p.system {
+  color: var(--dim);
+  font-style: italic;
+  border-top: 1px solid var(--edge);
+  padding-top: 1rem;
+}
+
+/* marker — an instrument, not a line. Written every time, shown only with the
+   debug switch, so turning it on reveals the whole run at once. */
+#log p.marker {
+  display: none;
+  color: #4a463f;
+  font-family: ui-monospace, monospace;
+  font-size: 0.65rem;
+  letter-spacing: 0.15em;
+}
+
+body.debug #log p.marker { display: block; }
+
+@keyframes surface {
+  from { opacity: 0; transform: translateY(0.4rem); }
+  to { opacity: 1; transform: none; }
+}
+
+/* No ground of its own: the controls float on the water rather than sitting
+   on a panel laid over it. Each one carries its own shadow instead. */
+footer {
+  padding-top: 1.35rem;
+}
+
+.actions {
+  display: flex;
+  gap: 0.6rem;
+  margin-bottom: 0.9rem;
+}
+
+/* Under the surface, and empty until something startles the silt. */
+#belongings {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  min-height: 2.1rem;
+}
+
+button {
+  font: inherit;
+  font-size: 0.85rem;
+  color: var(--ink);
+  background: var(--wet);
+  border: 1px solid var(--edge);
+  border-radius: 2px;
+  padding: 0.5rem 1.15rem;
+  cursor: pointer;
+  /* Lifted off the water rather than cut out of it. */
+  box-shadow: 0 3px 16px rgba(0, 0, 0, 0.6);
+  transition: background 0.15s, border-color 0.15s, opacity 0.15s, box-shadow 0.15s, transform 0.15s;
+}
+
+button:hover:not(:disabled) {
+  background: #26241d;
+  border-color: #3d3a32;
+  box-shadow: 0 5px 20px rgba(0, 0, 0, 0.66);
+  transform: translateY(-1px);
+}
+
+button:disabled {
+  opacity: 0.35;
+  box-shadow: none;
+  cursor: default;
+}
+
+/* No active state on any of these: a click is one beat, not a mode you are
+   left sitting in. What is currently true of the presence is said in prose. */
+button.unknown { color: var(--dim); font-style: italic; }
+
+/* Warmth is the border. It only ever runs one way, and a cold one stays cold —
+   the colour is the belonging's whole clock, and it never goes back up. */
+button[data-feel='warm'] { color: var(--warm); border-color: color-mix(in oklab, var(--warm) 55%, var(--edge)); }
+button[data-feel='cooling'] { color: var(--cooling); border-color: color-mix(in oklab, var(--cooling) 45%, var(--edge)); }
+button[data-feel='nearly-cold'] { color: var(--cold); border-color: color-mix(in oklab, var(--cold) 40%, var(--edge)); }
+button[data-feel='cold'] { color: var(--spent); border-color: var(--edge); }
+
+.actions { display: flex; gap: 0.4rem; }
+
+/* The bars are a debug view wearing a costume, so they live behind the switch
+   with the rest of the instruments. */
+#meters { display: none; }
+
+body.debug #meters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.25rem;
+  margin-top: 0.9rem;
+  font-family: ui-monospace, monospace;
+  font-size: 0.7rem;
+  letter-spacing: 0.08em;
+  color: var(--dim);
+}
+
+#meters b { font-weight: normal; color: var(--cold); }
+
+/* ---------------------------------------------------------------------------
+   The two dials. Neither is a bar and neither carries a number: the water is
+   the presence, the coin of sky is everything that was never yours.
+   --------------------------------------------------------------------------- */
+
+/* One picture, behind everything, running the full width of the viewport —
+   the water is the nearest thing there is and nothing may crop it. Its
+   opacity and brightness are set from `main.ts`; nothing here fixes them. */
+#shaft {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+}
+
+/* The coming-into-view is eased here rather than stepped per line, so a beat
+   that writes three lines still reads as one movement of the dark. */
+#shaft .scene {
+  width: 100%;
+  height: 100%;
+  transition: opacity 0.7s ease-out, filter 0.7s ease-out;
+}
+
+/* The walls: under the words on purpose, and faint enough that no message
+   type loses contrast crossing them — grey at the ink's own hue, never a
+   colour of its own. */
+#shaft .walls {
+  stroke: #cfc8bd;
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+  fill: none;
+  opacity: 0.08;
+}
+
+/* Halftone: the dots are the light, the ground is the shaft. */
+#shaft .water {
+  color: #9aa5ac;
+  transition: color 0.45s ease-out;
+}
+
+/* Something is being done to it, right now, this beat. */
+#shaft .scene.pressing .water { color: #cdd6db; }
+
+#shaft .sky { filter: drop-shadow(0 0 26px rgba(247, 230, 173, 0.18)); }
+
+/* The corners answering the water. A hint that the room is wrong — never a
+   reading of how much is left, and it is the only thing that lands on the
+   very first press, while the shaft itself is still too dark to read. */
+#shaft .agitation {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  transition: opacity 0.5s ease-out;
+  background:
+    radial-gradient(ellipse 78% 62% at 50% 55%, transparent 45%, rgba(154, 165, 172, 0.16) 100%);
+}
+
+#shaft .figure {
+  fill: #0a0908;
+  opacity: 0;
+  transition: opacity 0.5s ease-out;
+}
+
+/* Somebody at the rim. Never a face, and it never quite covers the light. */
+#shaft .figure.there { opacity: 0.82; }
+
+#peek {
+  font-family: ui-monospace, monospace;
+  font-size: 0.65rem;
+  padding: 0.2rem 0.5rem;
+  background: none;
+  box-shadow: none;
+}
+
+#peek:hover:not(:disabled) {
+  box-shadow: none;
+  transform: none;
+}
+
+#debug {
+  position: fixed;
+  inset: auto 1rem 1rem auto;
+  max-width: 22rem;
+  max-height: 70vh;
+  overflow: auto;
+  background: #0d0c0a;
+  border: 1px solid var(--edge);
+  padding: 0.85rem;
+  font: 11px/1.5 ui-monospace, monospace;
+  color: var(--dim);
+  white-space: pre;
+}

@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>THE WELL</title>
+    <link rel="stylesheet" href="/src/web/style.css" />
+  </head>
+  <body>
+    <main id="app">
+      <div id="shaft" role="img"></div>
+
+      <header>
+        <h1>THE WELL</h1>
+        <button id="peek" type="button" title="show the numbers">debug</button>
+      </header>
+
+      <section id="log" aria-live="polite"></section>
+
+      <footer>
+        <!-- What is on the surface, and always was. -->
+        <div class="actions">
+          <button data-act="still" type="button">be still</button>
+          <button data-act="haunt" type="button">push</button>
+        </div>
+        <!-- What is under it, and only after something startles the silt. -->
+        <div id="belongings"></div>
+        <div id="meters"></div>
+      </footer>
+    </main>
+    <pre id="debug" hidden></pre>
+    <script type="module" src="/src/web/main.ts"></script>
+  </body>
+</html>

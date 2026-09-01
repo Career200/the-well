@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { couldStillFire, HAS_PRESSED, newGame, runStatus, step, TUNING } from '../src/core/engine.js';
+import { resolveCoda, verdictOf } from '../src/core/coda.js';
 import type { Game, PlayerAction } from '../src/core/engine.js';
 import { pack } from '../src/content/index.js';
 import { applyEffects } from '../src/core/effects.js';
@@ -12,6 +13,22 @@ const play = (game: Game, actions: PlayerAction[]): Game =>
   actions.reduce((g, a) => step(g, a).game, game);
 
 const wait = (n: number): PlayerAction[] => Array.from({ length: n }, () => ({ kind: 'wait' as const }));
+
+/**
+ * The silt having given something up. Belongings are not reachable until it
+ * has — two arrive in beat zero, the rest are pressed for — and these tests
+ * are about what `look` and `attune` do once a thing is there, not about how
+ * it got there.
+ */
+const found = (game: Game, ...ids: string[]): Game => ({
+  ...game,
+  state: {
+    ...game.state,
+    objects: Object.fromEntries(
+      Object.entries(game.state.objects).map(([id, o]) => [id, ids.includes(id) ? { ...o, found: true } : o]),
+    ),
+  },
+});
 
 describe('determinism', () => {
   it('same seed and actions produce the same world', () => {
@@ -98,12 +115,12 @@ describe('presence economy', () => {
 
 describe('belongings', () => {
   it('cannot be attuned before being looked at', () => {
-    const { lines } = step(newGame(pack, 3), { kind: 'attune', object: 'ring' });
+    const { lines } = step(found(newGame(pack, 3), 'ring'), { kind: 'attune', object: 'ring' });
     expect(lines[0]!.text).toMatch(/have not yet looked/);
   });
 
   it('looking raises lucidity exactly once per object', () => {
-    let game = newGame(pack, 3);
+    let game = found(newGame(pack, 3), 'ring');
     game = step(game, { kind: 'look', object: 'ring' }).game;
     const once = game.state.presence.lucidity;
     game = step(game, { kind: 'look', object: 'ring' }).game;
@@ -112,7 +129,7 @@ describe('belongings', () => {
   });
 
   it('looking advances a scene beat — uncovering costs a turn like anything else', () => {
-    let game = newGame(pack, 11);
+    let game = found(newGame(pack, 11), 'ring');
     while (game.mode.kind !== 'scene') game = step(game, { kind: 'wait' }).game;
     const before = game.mode.ctx.beatIndex;
     game = step(game, { kind: 'look', object: 'ring' }).game;
@@ -121,7 +138,7 @@ describe('belongings', () => {
   });
 
   it('attuning holds only one thing at a time', () => {
-    let game = newGame(pack, 3);
+    let game = found(newGame(pack, 3), 'ring', 'knife');
     game = step(game, { kind: 'look', object: 'ring' }).game;
     game = step(game, { kind: 'look', object: 'knife' }).game;
     game = step(game, { kind: 'attune', object: 'ring' }).game;
@@ -130,7 +147,7 @@ describe('belongings', () => {
   });
 
   it('charge spent on a belonging never comes back', () => {
-    let game = newGame(pack, 3);
+    let game = found(newGame(pack, 3), 'ring');
     game = step(game, { kind: 'look', object: 'ring' }).game;
     game = step(game, { kind: 'attune', object: 'ring' }).game;
     const spent = game.state.objects.ring!.charge;
@@ -140,13 +157,21 @@ describe('belongings', () => {
   });
 
   it('a belonging runs out for good, and drops itself when it does', () => {
-    let game = newGame(pack, 3);
+    let game = found(newGame(pack, 3), 'ring');
     game = step(game, { kind: 'look', object: 'ring' }).game;
     game = step(game, { kind: 'attune', object: 'ring' }).game;
-    game = play(game, wait(40));
+    game = play(game, wait(16));
     expect(game.state.objects.ring!.charge).toBeLessThanOrEqual(TUNING.spent);
     expect(game.state.presence.stance.kind).toBe('still');
-    expect(step(game, { kind: 'attune', object: 'ring' }).lines[0]!.text).toMatch(/not coming back/);
+
+    // Asked for again, from a run still going: a cold thing stays cold.
+    const fresh = found(newGame(pack, 3), 'ring');
+    const ring = fresh.state.objects.ring!;
+    const spent: Game = {
+      ...fresh,
+      state: { ...fresh.state, objects: { ...fresh.state.objects, ring: { ...ring, found: true, discovered: true, charge: 0 } } },
+    };
+    expect(step(spent, { kind: 'attune', object: 'ring' }).lines[0]!.text).toMatch(/not coming back/);
   });
 });
 
@@ -155,21 +180,16 @@ describe('the stop', () => {
     expect(runStatus(newGame(pack, 21)).kind).toBe('open');
   });
 
-  it('a run where the player does nothing stalls, and says so once', () => {
+  it('a run where the player does nothing runs out of world', () => {
     let game = newGame(pack, 21);
-    let announcements = 0;
-    for (let i = 0; i < 200; i++) {
-      const result = step(game, { kind: 'wait' });
-      game = result.game;
-      announcements += result.lines.filter((l) => l.text.includes('while the well is what it is now')).length;
-    }
-    expect(runStatus(game).kind).toBe('stalled');
-    expect(announcements).toBe(1);
+    for (let i = 0; i < 200; i++) game = step(game, { kind: 'wait' }).game;
+    // it used to sit in `stalled` forever announcing itself; now it ends.
+    expect(game.mode.kind).toBe('over');
   });
 
   it('stalled is not quiet: the gates are shut, not gone', () => {
     let game = newGame(pack, 21);
-    for (let i = 0; i < 200; i++) game = step(game, { kind: 'wait' }).game;
+    for (let i = 0; i < 8; i++) game = step(game, { kind: 'wait' }).game;
     const stillPossible = pack.scenes.filter((s) => couldStillFire(game, s));
     expect(stillPossible.length).toBeGreaterThan(0);
   });
@@ -184,18 +204,130 @@ describe('the stop', () => {
     expect(runStatus(game).kind).toBe('quiet');
   });
 
-  it('a run that plays the whole world goes quiet, and says so once', () => {
+  it('a played-out run reaches an ending, and is told it exactly once', () => {
     const rng = makeRng(13);
     let game = newGame(pack, 0);
-    let announcements = 0;
+    let codas = 0;
     for (let t = 0; t < 120; t++) {
       const result = step(game, choose(game, pack, 'mixed', rng.next()));
       game = result.game;
-      announcements += result.lines.filter((l) => l.text.includes('Nothing is coming')).length;
+      if (result.lines.some((l) => l.kind === 'coda')) codas++;
     }
-    expect(game.state.history).toHaveLength(pack.scenes.length);
-    expect(runStatus(game).kind).toBe('quiet');
-    expect(announcements).toBe(1);
+    expect(game.mode.kind).toBe('over');
+    expect(codas).toBe(1);
+  });
+});
+
+describe('the coda', () => {
+  const playOut = (seed: number, policy: 'idle' | 'mixed' = 'mixed'): Game => {
+    const rng = makeRng(seed * 7919 + 13);
+    let game = newGame(pack, seed);
+    for (let t = 0; t < 160 && game.mode.kind !== 'over'; t++) {
+      game = step(game, choose(game, pack, policy, rng.next())).game;
+    }
+    return game;
+  };
+
+  it('every run ends, and ends only once', () => {
+    for (const seed of [0, 1, 5, 13, 42]) {
+      const game = playOut(seed);
+      expect(game.mode.kind, `seed ${seed} never ended`).toBe('over');
+      // a finished run is finished: the controls exist and do nothing
+      const after = step(game, { kind: 'haunt' });
+      expect(after.lines).toHaveLength(0);
+      expect(after.game).toBe(game);
+    }
+  });
+
+  it('a run where nobody ever comes starves rather than hanging', () => {
+    const game = playOut(21, 'idle');
+    expect(game.mode.kind).toBe('over');
+    if (game.mode.kind === 'over') expect(game.mode.door).toBe('starved');
+  });
+
+  it('is composed, not chosen: spine, then what else is true, then the verdict, then you', () => {
+    const fresh = newGame(pack, 1).state;
+    const base = { ...fresh, history: [{ scene: 'first-water', outcome: 'quiet', turn: 3 }] };
+    const ctx = { state: base, door: 'starved' as const, verdict: null, tier: 'veiled' as const };
+    const bare = resolveCoda(pack.coda!, ctx).lines;
+    // spine + verdict + close, with no clauses true in a fresh world
+    expect(bare).toHaveLength(3);
+    expect(bare.every((l) => l.kind === 'coda')).toBe(true);
+
+    // a fact that changes the ending outright adds to it rather than replacing it
+    const withBody = { ...ctx, state: { ...base, flags: { 'body-found': true } } };
+    expect(resolveCoda(pack.coda!, withBody).lines).toHaveLength(4);
+
+    // and a village that was never given anything to tell says nothing at all
+    expect(resolveCoda(pack.coda!, { ...ctx, state: fresh }).lines).toHaveLength(2);
+  });
+
+  it('says nothing the presence never worked out', () => {
+    const base = newGame(pack, 1).state;
+    const ctx = { state: base, door: 'starved' as const, verdict: null };
+    const veiled = resolveCoda(pack.coda!, { ...ctx, tier: 'veiled' }).lines.at(-1)!.text;
+    const named = resolveCoda(pack.coda!, { ...ctx, tier: 'named' }).lines.at(-1)!.text;
+    expect(veiled).not.toEqual(named);
+    // the veiled close cannot name her, and no close may use the word
+    expect(veiled.toLowerCase()).not.toMatch(/\bshe\b/);
+    for (const tier of ['veiled', 'plain', 'named'] as const) {
+      expect(resolveCoda(pack.coda!, { ...ctx, tier }).lines.at(-1)!.text.toLowerCase()).not.toMatch(/\bdead\b|\bdied\b/);
+    }
+  });
+
+  it('being forgotten takes the words back as it says them', () => {
+    const forgotten = (seed: number) => {
+      let game = newGame(pack, seed);
+      let coda: string[] = [];
+      for (let t = 0; t < 200 && game.mode.kind !== 'over'; t++) {
+        const result = step(game, { kind: 'wait' });
+        game = result.game;
+        const said = result.lines.filter((l) => l.kind === 'coda');
+        if (said.length) coda = said.map((l) => l.text);
+      }
+      return { game, coda };
+    };
+
+    const { game, coda } = forgotten(21);
+    if (game.mode.kind !== 'over') throw new Error('never ended');
+    expect(game.mode.spine).toBe('forgotten');
+
+    // whatever it had worked out about itself goes first
+    expect(game.state.presence.lucidity).toBe(0);
+
+    // and the words come apart as they are read — more of them, further in
+    const authored = pack.coda!.spines.find((s) => s.id === 'forgotten')!.text;
+    expect(coda[0]).not.toEqual(authored);
+    const holes = (s: string) => (s.match(/ {2,}/g) ?? []).length / s.length;
+    expect(holes(coda.at(-1)!)).toBeGreaterThan(holes(coda[0]!));
+
+    // still a seeded run: the same seed comes apart the same way
+    expect(forgotten(21).coda).toEqual(coda);
+  });
+
+  it('never hands over a belonging the player did not go and find', () => {
+    // The tier is the count: `named` is four looked at, `plain` is exactly
+    // three, `veiled` is two or fewer. So below `named` a close may say how
+    // many there were but must not say *which* — the one that was missed
+    // cannot arrive in the ending for free.
+    const base = newGame(pack, 1).state;
+    const ctx = { state: base, door: 'starved' as const, verdict: null };
+    const names = pack.objects.map((o) => o.id);
+
+    for (const tier of ['veiled', 'plain'] as const) {
+      const close = resolveCoda(pack.coda!, { ...ctx, tier }).lines.at(-1)!.text.toLowerCase();
+      for (const name of names) {
+        expect(close, `the ${tier} close names the ${name}`).not.toContain(name);
+      }
+    }
+  });
+
+  it('needs a margin before it says the village decided anything', () => {
+    const base = newGame(pack, 1).state;
+    const tied = { ...base, beliefs: { ...base.beliefs, haunted: 0.4, tragedy: 0.35 } };
+    expect(verdictOf(tied)).toBeNull();
+    const decided = { ...base, beliefs: { ...base.beliefs, haunted: 0.6, tragedy: 0.2 } };
+    expect(verdictOf(decided)).toBe('haunted');
   });
 });
 

@@ -3,12 +3,14 @@ import { objects } from './objects.js';
 import { people } from './people.js';
 import { scenes } from './scenes.js';
 import { belowProse, belowSubjects } from './below.js';
+import { coda } from './coda.js';
 
 export const pack: ContentPack = {
   people,
   objects,
   scenes,
   well: { attention: 0.1, dread: 0 },
+  coda,
   below: belowSubjects,
   belowProse,
   ambient: [
@@ -17,5 +19,9 @@ export const pack: ContentPack = {
     'The water shifts once, on its own, and is still.',
     'Far off, a dog, and then somebody shouting at the dog, and then neither.',
     'Rain, somewhere. It arrives here later and colder than it does up there.',
+    'Somebody passes on the track without slowing. Two steps, and then the field takes the sound.',
+    'A bucket knocks the rim, four wells away, and it is not for you.',
+    'The light goes yellow along one edge. That is the whole of the afternoon.',
+    'Something small falls in and does not come back up, and it was not worth watching.',
   ],
 };

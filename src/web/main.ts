@@ -1,9 +1,9 @@
-import { HAS_PRESSED, newGame, runStatus, step, TUNING } from '../core/engine.js';
+import { HAS_PRESSED, newGame, NOTHING_NEW, runStatus, step, TUNING } from '../core/engine.js';
 import type { Game, PlayerAction } from '../core/engine.js';
 import { pack } from '../content/index.js';
 import { feelBand, feelOf, stanceLine, water } from '../core/readout.js';
 import { BELIEFS, EMOTIONS } from '../core/types.js';
-import type { LineKind } from '../core/types.js';
+import type { LineKind, NarrationLine } from '../core/types.js';
 import { makeShaft } from './visuals.js';
 import type { Bands } from './visuals.js';
 
@@ -97,7 +97,11 @@ function fitLog({ skyBottom, waterTop }: Bands): void {
   const header = document.querySelector('header')!.getBoundingClientRect().bottom;
   const footer = document.querySelector('footer')!.getBoundingClientRect().top;
   log.style.marginTop = `${Math.max(0, skyBottom + gap - header)}px`;
-  log.style.marginBottom = `${Math.max(0, footer - waterTop + gap)}px`;
+  // Once it is over, the words take the whole shaft. There is nothing left to
+  // read the water for, and the ending needs the room more than the picture
+  // does — see `render`, which puts the controls away at the same moment.
+  log.style.marginBottom =
+    game.mode.kind === 'over' ? `${gap}px` : `${Math.max(0, footer - waterTop + gap)}px`;
 }
 
 /**
@@ -111,12 +115,30 @@ const REVEAL_LINES = 14;
 let revealed = 0;
 
 /**
- * Lines arrive one at a time even when a beat produced four of them: they are
- * in the document immediately, and the stagger is a delay on each one's
- * entrance. A beat should read as a thing unfolding, not as a paragraph
- * appearing.
+ * Lines arrive one at a time even when a beat produced several: they are in
+ * the document immediately, and the stagger is a delay on each entrance. A
+ * beat should read as a thing unfolding, not as a paragraph appearing.
+ *
+ * The gap is the length of the line that came before it, because a flat tick
+ * gives twenty-five words the same room as four — and a change of register is
+ * a different voice starting, which needs a breath of its own on top.
  */
-const STAGGER_MS = 180;
+const STAGGER = {
+  base: 110,
+  perWord: 24,
+  /** A `fact` after a `scene` line is somebody else speaking. */
+  registerShift: 160,
+  /** Past this a long line stalls the ones behind it. */
+  max: 850,
+};
+
+const gapAfter = (line: NarrationLine, next: NarrationLine): number =>
+  Math.min(
+    STAGGER.max,
+    STAGGER.base +
+      line.text.trim().split(/\s+/).length * STAGGER.perWord +
+      (line.kind === next.kind ? 0 : STAGGER.registerShift),
+  );
 
 /**
  * There is no scrollback. The log holds the last `MAX_LINES` and the rest is
@@ -127,13 +149,17 @@ const STAGGER_MS = 180;
 const MAX_LINES = 12;
 
 /** The register comes from the engine now — the client never guesses at it. */
-function say(text: string, kind: LineKind | 'marker', index = 0): void {
+function say(text: string, kind: LineKind | 'marker', delayMs = 0): void {
   const p = document.createElement('p');
   p.className = kind;
   p.textContent = text;
-  if (index > 0) p.style.animationDelay = `${index * STAGGER_MS}ms`;
+  if (delayMs > 0) p.style.animationDelay = `${Math.round(delayMs)}ms`;
   log.append(p);
-  while (log.childElementCount > MAX_LINES) log.firstElementChild?.remove();
+  // The ending outranks the cap. Older lines go to make room for it, but a
+  // coda line is never evicted by the one after it — the whole of it stays.
+  while (log.childElementCount > MAX_LINES && !log.firstElementChild?.classList.contains('coda')) {
+    log.firstElementChild?.remove();
+  }
   if (game.state.flags[HAS_PRESSED]) revealed++;
 }
 
@@ -141,10 +167,17 @@ function act(action: PlayerAction): void {
   const wasInScene = game.mode.kind === 'scene';
   const result = step(game, action);
   game = result.game;
-  result.lines.forEach((line, i) => say(line.text, line.kind, i));
+  let delay = 0;
+  result.lines.forEach((line, i) => {
+    say(line.text, line.kind, delay);
+    const next = result.lines[i + 1];
+    if (next) delay += gapAfter(line, next);
+  });
   if (!quiet && runStatus(game).kind === 'quiet') {
     quiet = true;
-    say('nothing further will happen', 'system', result.lines.length);
+    const last = result.lines.at(-1);
+    const stop: NarrationLine = { kind: 'system', text: 'nothing further will happen' };
+    say(stop.text, stop.kind, last ? delay + gapAfter(last, stop) : 0);
   }
   // Markers are always written, and CSS decides whether they are visible —
   // so turning debug on shows the whole run's worth, not just what happened
@@ -169,27 +202,95 @@ const nameOf = (id: string): string => pack.objects.find((o) => o.id === id)?.na
  * cannot be acted on says so by being disabled.
  */
 function onCell(cell: { id: string; belonging: boolean }): void {
+  const button = cells.get(cell.id)!;
   const state = game.state.objects[cell.id];
   if (cell.belonging && state && surfaced(cell.id)) {
+    pulse(button, 'acted', 500);
     act(state.discovered ? { kind: 'attune', object: cell.id } : { kind: 'look', object: cell.id });
     return;
   }
-  if (game.mode.kind === 'below') act({ kind: 'haunt' });
+  if (game.mode.kind === 'below') push(button);
 }
 
-/** Has this thing's own line been said yet? */
+/** A one-shot class, with a timer behind it in case the tab is not watching. */
+function pulse(el: Element, cls: string, ms = 600): void {
+  el.classList.remove(cls);
+  void (el as HTMLElement).offsetWidth; // restart even if one is already running
+  el.classList.add(cls);
+  setTimeout(() => el.classList.remove(cls), ms);
+}
+
+/**
+ * Pushing, from wherever the player pushed from. If it lands, the push button
+ * lights along with whatever was clicked — which is how a cell teaches that it
+ * was a push all along. If there is nothing left to push with, the room and
+ * the one thing that would fix it answer instead: the same lesson from the
+ * other side, and the reason no dial has to be shown to teach it.
+ */
+function push(source?: Element): void {
+  const refused = game.state.presence.charge < TUNING.pressCost;
+  const button = el<HTMLButtonElement>('haunt-btn');
+  if (source) pulse(source, 'acted', 500);
+
+  if (refused) {
+    pulse(el('still-btn'), 'refused', 1100);
+    shaft.flash();
+  } else if (source !== button) {
+    pulse(button, 'acted', 500);
+  }
+  act({ kind: 'haunt' });
+}
+
+/**
+ * Has this thing's own line been said yet? A belonging is on the world's own
+ * record — the silt gave it up, in beat zero or later — while an ambient
+ * subject only ever resolves inside the phase.
+ */
 function surfaced(id: string): boolean {
+  if (game.state.objects[id]) return game.state.objects[id]!.found;
   if (game.mode.kind !== 'below') return true;
-  const phase = game.mode.phase;
-  return !!phase.seen[id] || phase.revealed.includes(id as never);
+  return game.mode.phase.revealed.includes(id as never);
 }
 
 let quiet = false;
+let forgetting: ReturnType<typeof setInterval> | undefined;
+
+/**
+ * The one ending that goes on happening after it is told. The text arrives
+ * already coming apart — the engine takes the letters, deterministically —
+ * and then the dark takes the rest of it a line at a time while the player
+ * watches, until there is nothing left up there but the sound of nothing.
+ *
+ * Bounded by construction: it stops when the coda is gone, and starting it
+ * twice is a no-op.
+ */
+function forget(): void {
+  if (forgetting) return;
+  forgetting = setInterval(() => {
+    const left = log.querySelector('p.coda');
+    if (!left) {
+      clearInterval(forgetting);
+      forgetting = undefined;
+      return;
+    }
+    left.remove();
+    say(NOTHING_NEW, 'idle');
+    // Slow on purpose: the text has to be readable before it is taken, or the
+    // taking is not a loss, it is just a transition.
+  }, 13000);
+}
 
 function render(): void {
   const inScene = game.mode.kind === 'scene';
+  // Clamped here rather than in the shaft: `revealed` goes on counting all
+  // run, so an unclamped value swallows any scaling applied to it below.
+  const seen = game.state.flags[HAS_PRESSED] ? Math.min(1, revealed / REVEAL_LINES) : 0;
+  el('shaft').classList.toggle('receding', game.mode.kind === 'over');
   shaft.update({
-    visibility: game.state.flags[HAS_PRESSED] ? revealed / REVEAL_LINES : 0,
+    // Once it is over the picture goes back down. The words run the whole
+    // height of the shaft now, including across the water, and the ending is
+    // the thing that has to be readable — not the place it happened in.
+    visibility: game.mode.kind === 'over' ? seen * 0.28 : seen,
     occupied: inScene,
     charge: game.state.presence.charge,
     pressing: game.state.presence.stance.kind === 'pressing',
@@ -266,6 +367,24 @@ function render(): void {
     meters.append(span);
   }
 
+  // A finished run puts its controls away. Keeping nine dead cells on screen
+  // says "there is still something to do here" for the whole length of the
+  // ending, and the ending needs that space more than the grid does.
+  const footer = document.querySelector('footer')!;
+  footer.classList.toggle('gone', game.mode.kind === 'over');
+  if (game.mode.kind === 'over') {
+    // The ending replaces the run. Everything that led here goes, so the coda
+    // gets the whole shaft and starts at the top of it — and the log is
+    // allowed to scroll again, because no-scrollback is a rule about the run
+    // and a long ending has to be readable to the end of itself.
+    for (const line of [...log.children]) if (!line.classList.contains('coda')) line.remove();
+    log.classList.add('ended');
+    fitLog(shaft.bands());
+    if (game.mode.spine === 'forgotten') forget();
+    if (!debug.hidden) debug.textContent = dump();
+    return;
+  }
+
   // Push is the one stance that can be unavailable, and it says so rather than
   // letting the player spend a beat finding out. Stillness is never refused —
   // and when it is the only move left it calls, in the same voice the
@@ -311,7 +430,11 @@ for (const button of document.querySelectorAll<HTMLButtonElement>('[data-act]'))
   const kind = button.dataset['act'];
   if (kind === 'haunt') button.id = 'haunt-btn';
   if (kind === 'still') button.id = 'still-btn';
-  button.onclick = () => act({ kind } as PlayerAction);
+  button.onclick = () => {
+    if (kind === 'haunt') return push(button);
+    pulse(button, 'acted', 500);
+    act({ kind } as PlayerAction);
+  };
 }
 
 /**

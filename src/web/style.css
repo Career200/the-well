@@ -84,6 +84,16 @@ h1 {
   mask-image: linear-gradient(to bottom, transparent 0, #000 3.5rem);
 }
 
+/* Once the coda is the only thing left: from the top, whole, and re-readable.
+   The scrollbar comes back for exactly this — an ending you cannot get to the
+   end of is not an ending. */
+#log.ended {
+  justify-content: flex-start;
+  overflow-y: auto;
+  mask-image: none;
+  scrollbar-width: thin;
+}
+
 #log p {
   margin: 0 0 1.25rem;
   /* `backwards` matters: a staggered line must hold at the animation's first
@@ -113,6 +123,22 @@ h1 {
 #log p.idle {
   color: var(--dim);
   font-style: italic;
+}
+
+/* coda — the ending. The brightest and the slowest thing on the page, and the
+   only text with room around it: nothing follows it, so nothing has to be
+   left space for. */
+#log p.coda {
+  color: #f2ece1;
+  line-height: 1.7;
+  margin-bottom: 1.15rem;
+}
+
+/* No rule above it once the coda stands alone — there is nothing to divide
+   it from any more. */
+#log:not(.ended) p.coda:first-of-type {
+  border-top: 1px solid var(--edge);
+  padding-top: 1.5rem;
 }
 
 /* system — the run talking about itself. Set apart by a rule rather than by
@@ -145,6 +171,11 @@ body.debug #log p.marker { display: block; }
    on a panel laid over it. Each one carries its own shadow instead. */
 footer {
   padding-top: 1.35rem;
+}
+
+/* The run is over: the controls fold away and the words take the shaft. */
+footer.gone {
+  display: none;
 }
 
 .actions {
@@ -226,6 +257,36 @@ button {
    after `.calling` so it wins for as long as it runs. */
 .surfacing { animation: call-in 0.75s ease-out; }
 
+/* A click landing. The button that was pressed says so, and — when a cell
+   turns out to have been a push — the push button says so at the same moment,
+   which is the whole of how that gets taught.
+
+   Only a `from` keyframe: the browser builds the `to` from the element's own
+   styles, so one animation serves a lit cell, an unlit one and a stance
+   button without knowing what any of them look like at rest. */
+.acted { animation: acted 0.4s ease-out; }
+
+@keyframes acted {
+  from {
+    border-color: #b39a63;
+    color: #f2e6c8;
+    box-shadow: var(--rest), 0 0 20px -2px rgba(247, 230, 173, 0.75);
+  }
+}
+
+/* Nothing left to push with. Cold, not warm — this is the water's channel,
+   not a thing calling — and longer than a click so it reads as the answer to
+   what just failed rather than as feedback for the press itself. */
+.refused { animation: refused 1s ease-out; }
+
+@keyframes refused {
+  from {
+    border-color: #8f9ba2;
+    color: #eaf1f4;
+    box-shadow: var(--rest), 0 0 28px -2px rgba(160, 172, 180, 0.9);
+  }
+}
+
 @keyframes calling {
   0%, 100% {
     box-shadow: var(--rest);
@@ -265,6 +326,10 @@ button {
    The arrival keeps its animation: it is a one-shot tint with no movement in
    it at all, which is not what reduced motion is protecting against. */
 @media (prefers-reduced-motion: reduce) {
+  /* `.acted`, `.refused` and the corner flash all survive here: they are
+     one-shot tints answering a click the player just made — feedback, not
+     ambience — and there is no movement in any of them. Only the endless
+     pulse goes. */
   .calling {
     animation: none;
     box-shadow: var(--rest), var(--glow-dx) var(--glow-dy) 20px -3px rgba(247, 230, 173, 0.5);
@@ -371,6 +436,13 @@ body.debug #meters {
   transition: opacity 0.7s ease-out, filter 0.7s ease-out;
 }
 
+/* The ending takes its time going out. The water is the brightest thing on
+   the page and the coda is laid straight over it, so the picture goes down
+   slowly enough to read as the place receding rather than as a light switch. */
+#shaft.receding .scene {
+  transition: opacity 4s ease-in-out, filter 4s ease-in-out;
+}
+
 /* The walls: under the words on purpose, and faint enough that no message
    type loses contrast crossing them — grey at the ink's own hue, never a
    colour of its own. */
@@ -403,6 +475,15 @@ body.debug #meters {
   transition: opacity 0.5s ease-out;
   background:
     radial-gradient(ellipse 78% 62% at 50% 55%, transparent 45%, rgba(154, 165, 172, 0.16) 100%);
+}
+
+/* The whole room flinching, for as long as it takes to notice. Overrides the
+   inline opacity `main.ts` sets, because animations outrank inline styles. */
+#shaft .agitation.flash { animation: agitation-flash 1s ease-out; }
+
+@keyframes agitation-flash {
+  0% { opacity: 0.95; filter: brightness(2.1); }
+  35% { opacity: 0.8; filter: brightness(1.7); }
 }
 
 /* On a phone there is less water in view and less screen for the glow to

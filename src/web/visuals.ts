@@ -81,6 +81,12 @@ export interface Bands {
 export interface Shaft {
   update(state: ShaftState): void;
   bands(): Bands;
+  /**
+   * The room answering something the player could not do. Brief, and its own
+   * channel: the corners are already the charge's reading, so a spike of them
+   * says *that* is what just went wrong, without a number appearing anywhere.
+   */
+  flash(): void;
 }
 
 interface Dot {
@@ -298,5 +304,11 @@ export function makeShaft(host: HTMLElement, onLayout?: (bands: Bands) => void, 
       drawWater(charge, pressing, turn);
     },
     bands: () => bands,
+    flash(): void {
+      corners.classList.remove('flash');
+      void corners.offsetWidth; // restart it even if one is already running
+      corners.classList.add('flash');
+      setTimeout(() => corners.classList.remove('flash'), 1100);
+    },
   };
 }

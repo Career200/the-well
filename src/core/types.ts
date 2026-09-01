@@ -32,8 +32,10 @@ export type Scalar = number; // conventionally clamped to [0, 1]
  *   idle    the texture of an empty turn. The only faded one.
  *   system  the run talking about itself: the stop, the phase ending. Not
  *           prose, and must never be mistaken for it.
+ *   coda    the ending. The narrator, no longer inside anything, saying what
+ *           the run turned out to have been. Arrives once and never again.
  */
-export type LineKind = 'scene' | 'fact' | 'idle' | 'system';
+export type LineKind = 'scene' | 'fact' | 'idle' | 'system' | 'coda';
 
 /** One narrated line, with the register it is spoken in. */
 export interface NarrationLine {
@@ -51,6 +53,12 @@ export interface PersonState {
 
 export interface ObjectState {
   id: ObjectId;
+  /**
+   * The silt has given it up. Until then it cannot be looked at or held —
+   * it is not that the presence has not noticed it, it is that it is not
+   * there yet. Two arrive in beat zero; the rest have to be pressed for.
+   */
+  found: boolean;
   /** The player has looked closely enough to know it is theirs. */
   discovered: boolean;
   /** How much of its charge is left; attuning spends it. */

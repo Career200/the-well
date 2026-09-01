@@ -2,13 +2,21 @@ import { describe, expect, it } from 'vitest';
 import { newGame, NOTHING_NEW, step, TUNING } from '../src/core/engine.js';
 import type { PlayerAction } from '../src/core/engine.js';
 import { pack } from '../src/content/index.js';
-import { BELOW_TUNING, tierOf } from '../src/core/below.js';
+import { AMBIENT_ORDER, BELOW_TUNING, tierOf } from '../src/core/below.js';
 
 describe('tierOf', () => {
   it('bands lucidity into veiled, plain, named', () => {
     expect(tierOf(0, false)).toBe('veiled');
-    expect(tierOf(0.5, false)).toBe('plain');
+    expect(tierOf(0.6, false)).toBe('plain');
     expect(tierOf(0.9, false)).toBe('named');
+  });
+
+  it('is pinned to how many belongings were looked at', () => {
+    // One thing never found is one tier of the ending never reached.
+    const after = (looks: number) => TUNING.lucidityFirstPress + looks * TUNING.lucidityPerDiscovery;
+    expect(tierOf(after(4), false)).toBe('named');
+    expect(tierOf(after(3), false)).toBe('plain');
+    expect(tierOf(after(2), false)).toBe('veiled');
   });
 
   it('belongings run one tier ahead of ambient subjects', () => {
@@ -20,7 +28,7 @@ describe('tierOf', () => {
 });
 
 describe('beat zero', () => {
-  it('always terminates inside the cap, whatever the player does', () => {
+  it('always leaves the dark inside the cap, whatever the player does', () => {
     for (const action of [{ kind: 'wait' } as const, { kind: 'haunt' } as const] as PlayerAction[]) {
       let game = newGame(pack, 5, { below: true });
       let turns = 0;
@@ -28,9 +36,30 @@ describe('beat zero', () => {
         game = step(game, action).game;
         turns++;
       }
-      expect(game.mode.kind).toBe('idle');
+      expect(game.mode.kind).not.toBe('below');
       expect(turns).toBeLessThanOrEqual(BELOW_TUNING.cap);
     }
+  });
+
+  it('the light does not cross for a presence that never opened its eyes', () => {
+    // Waiting it out is not a way through: there is no ending in the dark for
+    // someone who never began, so the run starves where it lies instead.
+    let game = newGame(pack, 5, { below: true });
+    for (let i = 0; i < BELOW_TUNING.cap - 1; i++) game = step(game, { kind: 'still' }).game;
+    expect(game.mode.kind, 'left the dark without ever acting').toBe('below');
+
+    game = step(game, { kind: 'still' }).game;
+    expect(game.mode.kind).toBe('over');
+    if (game.mode.kind === 'over') expect(game.mode.door).toBe('starved');
+
+    // one press, however late, and the way out exists again
+    let woken = newGame(pack, 5, { below: true });
+    for (let i = 0; i < BELOW_TUNING.cap - 1; i++) {
+      woken = step(woken, i === 6 ? { kind: 'haunt' } : { kind: 'still' }).game;
+    }
+    expect(woken.mode.kind).toBe('below');
+    woken = step(woken, { kind: 'still' }).game;
+    expect(woken.mode.kind).toBe('idle');
   });
 
   it('uncovering what the silt gives up ends the phase without the cap', () => {
@@ -70,6 +99,34 @@ describe('beat zero', () => {
     expect(game.state.presence.stance.kind).not.toBe('holding');
   });
 
+  it('stops at the walls until the presence has acted once', () => {
+    const veiled = (id: string): string => pack.below![id]!.veiled;
+    const play = (act: (turn: number) => PlayerAction): string[] => {
+      let game = newGame(pack, 3, { below: true });
+      const said: string[] = [];
+      let turns = 0;
+      while (game.mode.kind === 'below' && turns < BELOW_TUNING.cap + 4) {
+        const result = step(game, act(turns));
+        game = result.game;
+        turns++;
+        for (const line of result.lines) said.push(line.text);
+      }
+      return said;
+    };
+
+    // Never acts: the cold, the water and the walls press against you anyway.
+    // The sky and the silt are looked at, and nothing has looked yet.
+    const asleep = play(() => ({ kind: 'still' }));
+    expect(asleep).toContain(veiled('walls'));
+    expect(asleep).not.toContain(veiled('sky'));
+    expect(asleep).not.toContain(veiled('silt'));
+
+    // One push, however late, opens them — the rest resume on their own clock.
+    const woken = play((turn) => (turn === 7 ? { kind: 'haunt' } : { kind: 'still' }));
+    expect(woken).toContain(veiled('sky'));
+    expect(woken).toContain(veiled('silt'));
+  });
+
   it('never says the same thing twice', () => {
     // The phase is short and linear enough that a repeated sentence reads as
     // the machine showing through. Repetition is the run's tool, not this one's.
@@ -93,6 +150,38 @@ describe('beat zero', () => {
       }
       expect(said.length, `seed ${seed} said nothing`).toBeGreaterThan(8);
       expect(new Set(said).size, `seed ${seed} repeated a line`).toBe(said.length);
+    }
+  });
+
+  it('never narrates more than a turn can carry, and never drops what it held back', () => {
+    // Three clocks can come due at once down here. What the player caused is
+    // always said; the world's own lines wait — but they do not go away, and
+    // they keep the order they were written in.
+    for (const seed of [1, 3, 8, 42]) {
+      let game = newGame(pack, seed, { below: true });
+      const said: string[] = [];
+      let turns = 0;
+      while (game.mode.kind === 'below' && turns < BELOW_TUNING.cap + 4) {
+        const glimpsed = Object.entries(game.mode.phase.seen).find(([, seen]) => seen === 'glimpse');
+        const action: PlayerAction = glimpsed
+          ? { kind: 'look', object: glimpsed[0]! }
+          : game.state.presence.charge >= TUNING.pressCost
+            ? { kind: 'haunt' }
+            : { kind: 'still' };
+        const result = step(game, action);
+        game = result.game;
+        turns++;
+        expect(result.lines.length, `seed ${seed}, turn ${turns} narrated too much`).toBeLessThanOrEqual(
+          BELOW_TUNING.linesPerTurn,
+        );
+        for (const line of result.lines) said.push(line.text);
+      }
+
+      // every ambient subject still arrives, in its authored order
+      const at = AMBIENT_ORDER.map((id) => said.indexOf(pack.below![id]!.veiled));
+      expect(at.some((i) => i < 0), `seed ${seed} lost an ambient subject`).toBe(false);
+      expect([...at].sort((a, b) => a - b), `seed ${seed} reordered the subjects`).toEqual(at);
+      expect(said, `seed ${seed} never crossed the light`).toContain(pack.belowProse!.lightCrossing[0]);
     }
   });
 

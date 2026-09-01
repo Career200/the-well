@@ -227,12 +227,17 @@ export function eligibleScenes(game: Game): Scene[] {
   });
 }
 
-function maybeStartScene(game: Game): { game: Game; lines: NarrationLine[] } {
+/**
+ * `force` skips the arrival roll for a turn that has already decided somebody
+ * is there — beat zero ending is the only such turn. The weighting still
+ * chooses *who*, so the opening is not fixed to one scene.
+ */
+function maybeStartScene(game: Game, opts?: { force?: boolean }): { game: Game; lines: NarrationLine[] } {
   const candidates = eligibleScenes(game);
   if (candidates.length === 0) return { game, lines: [] };
 
   const chance = TUNING.sceneChance + game.state.well.attention * 0.4;
-  if (game.rng.next() > chance) return { game, lines: [] };
+  if (!opts?.force && game.rng.next() > chance) return { game, lines: [] };
 
   const picked = pickWeighted(game.rng, candidates, (s) => Math.max(0.0001, s.weight?.(game.state) ?? 1));
   if (!picked) return { game, lines: [] };
@@ -584,7 +589,7 @@ function advanceBelowMode(
   const finishing = ended && (queue.length === 0 || phase.turn >= BELOW_TUNING.cap);
   lines.push(...now, ...released);
   if (finishing) {
-    lines.push(...queue, ...crossing);
+    lines.push(...queue);
     queue = [];
   }
   ended = finishing;
@@ -597,25 +602,37 @@ function advanceBelowMode(
   const swallowed = lines.length > 0 && fresh.length === 0;
 
   // A run of silent turns eventually says something about the dark — but not
-  // every gap, because down here the water answers on its own.
-  const silence = fillSilence(guard.phase, fresh.length > 0);
+  // every gap, because down here the water answers on its own. The turn the
+  // phase ends is never one of these: something is arriving on it, and filler
+  // in front of an arrival is worse than the silence it was written for.
+  const silence = fillSilence(guard.phase, fresh.length > 0 || ended);
   let settled = silence.phase;
-  if (silence.speak) {
+  if (silence.speak && !ended) {
     const pool = (next.pack.belowProse?.settling ?? []).filter((line) => !settled.said.includes(line));
     const line = pool[Math.floor(next.rng.next() * pool.length)];
     if (line) {
       fresh = [...fresh, idle(line)];
       settled = { ...settled, said: [...settled.said, line] };
     }
-  } else if (swallowed) {
+  } else if (swallowed && !ended) {
     // Everything this turn had was already said. Say so, rather than nothing.
     fresh = [idle(NOTHING_NEW)];
   }
 
-  next = {
-    ...next,
-    mode: ended ? { kind: 'idle' } : { kind: 'below', phase: { ...settled, pending: queue } },
-  };
+  // The light crossing is the run beginning, not an announcement that it is
+  // about to begin (`BEAT_ZERO.md`: "the light crossing — the end, and the run
+  // beginning — 1 block"). Whoever comes to the rim opens on this same turn and
+  // their first beat *is* the crossing, so the phase does not narrate it first
+  // and then again from the scene two turns later. `lightCrossing` is what a
+  // rim with nobody at it gets; the cast is present from turn one, so today
+  // that is the unreachable branch, and it stays for content that changes it.
+  if (ended) {
+    const opened = maybeStartScene({ ...next, mode: { kind: 'idle' } }, { force: true });
+    if (opened.lines.length > 0) return { game: opened.game, lines: [...fresh, ...opened.lines] };
+    return { game: { ...next, mode: { kind: 'idle' } }, lines: [...fresh, ...crossing] };
+  }
+
+  next = { ...next, mode: { kind: 'below', phase: { ...settled, pending: queue } } };
   return { game: next, lines: fresh };
 }
 

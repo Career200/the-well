@@ -82,6 +82,11 @@ export const coda: Coda = {
       text: 'The boy tells it wrong, which is better. His version has a shape to it, and shapes are what get repeated.',
     },
     {
+      id: 'she-stayed',
+      when: ({ state }) => played(state, 'first-water', 'the-word'),
+      text: 'She began coming for water she did not need — only when the yard was empty at first, with a few words, and always a look behind her before she said them. By autumn she was talking the whole time the bucket was down, easy about it, the way you talk to somebody in the next room. In the spring she stopped going back to the house, and the ones who walked up to fetch her came down without her, and again. Eventually they stopped trying.',
+    },
+    {
       // `HORRORS.md` makes loss the progress bar, and until now every clause
       // was a village fact. This is the one that is about what it cost you —
       // and it is what the sealed ending's newcomer will arrive to.

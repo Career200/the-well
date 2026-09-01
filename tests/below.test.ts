@@ -59,7 +59,8 @@ describe('beat zero', () => {
     }
     expect(woken.mode.kind).toBe('below');
     woken = step(woken, { kind: 'still' }).game;
-    expect(woken.mode.kind).toBe('idle');
+    // The way out is somebody arriving: the phase hands straight to them.
+    expect(woken.mode.kind).toBe('scene');
   });
 
   it('uncovering what the silt gives up ends the phase without the cap', () => {
@@ -79,7 +80,7 @@ describe('beat zero', () => {
         game = step(game, action).game;
         turns++;
       }
-      expect(game.mode.kind, `seed ${seed}`).toBe('idle');
+      expect(game.mode.kind, `seed ${seed}`).toBe('scene');
       expect(turns, `seed ${seed} should not need the cap`).toBeLessThan(BELOW_TUNING.cap);
     }
   });
@@ -181,7 +182,18 @@ describe('beat zero', () => {
       const at = AMBIENT_ORDER.map((id) => said.indexOf(pack.below![id]!.veiled));
       expect(at.some((i) => i < 0), `seed ${seed} lost an ambient subject`).toBe(false);
       expect([...at].sort((a, b) => a - b), `seed ${seed} reordered the subjects`).toEqual(at);
-      expect(said, `seed ${seed} never crossed the light`).toContain(pack.belowProse!.lightCrossing[0]);
+      // The light crossing is the run beginning: the phase hands off to
+      // whoever is at the rim, and their opening beat is the crossing itself
+      // rather than a line announcing that one is coming.
+      expect(game.mode.kind, `seed ${seed} never crossed the light`).toBe('scene');
+      if (game.mode.kind !== 'scene') throw new Error('unreachable');
+      const opened = pack.scenes.find((s) => s.id === (game.mode as { scene: string }).scene)!;
+      expect(said[said.length - 1], `seed ${seed} did not open on the arrival`).toBe(
+        opened.beats[0]!.text(game.state, { pressure: 0, resonance: null, beatIndex: 0 }),
+      );
+      expect(said, `seed ${seed} announced the crossing as well as playing it`).not.toContain(
+        pack.belowProse!.lightCrossing[0],
+      );
     }
   });
 

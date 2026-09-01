@@ -30,6 +30,16 @@ export const scenes: Scene[] = [
     ],
     outcomes: [
       {
+        id: 'the-word',
+        when: (_s, ctx) => ctx.resonance?.object === 'ring',
+        text: () => 'The rope stops with the last of it still to come. She leans out over the rim, further than anyone leans out over water, and she stays there — both hands flat on the stone, not moving, for a long time. When she goes she leaves the bucket where it is.',
+        effects: () => [
+          { kind: 'emotion', person: 'mira', emotion: 'grief', delta: 0.45 },
+          { kind: 'belief', belief: 'tragedy', delta: 0.3 },
+          { kind: 'well', field: 'attention', delta: 0.2 },
+        ],
+      },
+      {
         id: 'terrified',
         when: (_s, ctx) => ctx.pressure >= UNDENIABLE,
         text: () => 'The bucket comes apart from her hands. She does not run at first — that is the worst of it — she stands and looks down and lets you look back, and then she runs.',

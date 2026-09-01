@@ -76,7 +76,7 @@ export const BELOW_TUNING = {
   /** Hard ceiling. The light crosses past this regardless of the player's state. */
   cap: 16,
   /** Movement II's lesson lands on partial recovery, not a full bar. */
-  recoverFloor: 0.45,
+  recoverFloor: 0.3,
   /** Charge has to have dipped under this for recovering past it to read as a move. */
   lowFloor: 0.2,
   /** Turns between one ambient subject resolving and the next, in the dark. */

@@ -71,11 +71,11 @@ body.seen         light found something. Nobody has said what
                         they were not supposed to have
 
 body.found        it is admitted out loud that there is a person down there
-                  from  the hearing, lamp steady · the sounding with Mira present
+                  from  the hearing, lamp steady · the sounding with Anna present
                         · the one in the water tells them, after the throwing
 
 body.named        a name was said over the mouth. Not necessarily the right one
-                  from  Mira on the fourth visit, to nobody · Orla's words with a
+                  from  Anna on the fourth visit, to nobody · Orla's words with a
                         name inside them · Tomas in the raw register
 
 something.came-up the well gave something back — on the hook, in the bucket, or
@@ -84,7 +84,7 @@ something.came-up the well gave something back — on the hook, in the bucket, o
                         up heavy after rain · the water is low enough
 
 ring.recognised   somebody knows whose it was
-                  from  it comes up and Mira is present · Orla is shown it and
+                  from  it comes up and Anna is present · Orla is shown it and
                         needs no telling · Sev describes it accurately in company
 ```
 

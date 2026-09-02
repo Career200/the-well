@@ -1,9 +1,8 @@
 import type { BelowSubject } from '../core/below.js';
 
 /**
- * The nine subjects, verbatim from `docs/story/descriptions/below.md`. Five
- * ambient, four belongings. `named` is authored but unreachable in beat zero
- * (`BEAT_ZERO.md`: "names come later").
+ * The nine subjects: five ambient, four belongings. `named` is authored but
+ * unreachable in beat zero — names come later.
  */
 export const belowSubjects: Record<string, BelowSubject> = {
   cold: {
@@ -52,7 +51,7 @@ export const belowSubjects: Record<string, BelowSubject> = {
   ring: {
     id: 'ring',
     glimpse: 'a small brightness in the silt',
-    veiled: 'AA hard pinch of metal on a pale shape. The edges are crusted green.',
+    veiled: 'A hard pinch of metal on a pale shape. The edges are crusted green.',
     plain: 'A brass ring, turning green in the damp. It is stuck on a finger, resting on a clenched fist.',
     named:
       'Your ring. She gave it back to you by the gate, and you kept it in your waistcoat pocket until the air went out. Your last thought was of it.',
@@ -91,11 +90,7 @@ export const belowSubjects: Record<string, BelowSubject> = {
   },
 };
 
-/**
- * The ten stub blocks `BEAT_ZERO.md` §"Content" asks for — one-liners for
- * now, per `BEAT_ZERO_PLAN.md` §5: "write the real ~400 words after playing
- * it, against a rhythm that has been felt rather than specified."
- */
+/** Stub transition blocks. The real prose comes after the phase is played. */
 export const belowProse = {
   opening: [
     'Dark, and the weight of water not yet named as water.',

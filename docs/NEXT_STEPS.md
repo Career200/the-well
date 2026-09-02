@@ -45,7 +45,7 @@ the well, which the current `cast`/affinity model handles fine.
 ## After that
 
 - **A scene economy.** Five one-shot scenes is a demo, not a game. Split content
-  into recurring beats (Mira comes for water, again, and again, and the text erodes
+  into recurring beats (Anna comes for water, again, and again, and the text erodes
   with `dread`) and one-shot story scenes. Add a cooldown field so repeatable
   scenes don't fire back to back.
 - **Blended resonance.** Holding two belongings at once, or holding one shortly
@@ -97,11 +97,12 @@ The nine cells exist in the UI — five ambient, four belongings — but only th
 belongings do anything. Two halves, and the first is a prerequisite for the
 second:
 
-**`look` should take a subject, not just an object.** Same verb, same cost of a
-beat, printing the subject at its current tier through `tierOf`. That is what
-makes re-reading a player's choice rather than an interruption, and it is what
-`HORRORS.md` §7 needs: deterioration is only savage if re-reading is already a
-habit by the time it starts running backwards.
+**`look` should take a subject, not just an object.** Half done: a belonging
+now reads through `tierOf` (`subjectAt` in `engine.ts`), so the fourth thing
+found is the one that gets named. The ambient five still have no verb. Same
+verb, same cost of a beat, and re-reading becomes a player's choice rather than
+an interruption — which is what `HORRORS.md` §7 needs, since deterioration is
+only savage if re-reading is a habit by the time it runs backwards.
 
 **A tier crossing queues, it never interrupts.** When lucidity crosses a tier,
 enqueue the subjects the player has actually met — an unmet subject cannot take

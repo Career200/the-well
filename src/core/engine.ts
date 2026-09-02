@@ -6,19 +6,16 @@ import { resolveOutcome } from './scene.js';
 import type { Scene, SceneContext } from './scene.js';
 import { initWorld } from './content.js';
 import type { ContentPack, ObjectDef } from './content.js';
-import { advanceBelow, BELOW_TUNING, eyesOpen, fillSilence, lookBelow, startBelow, tierOf, unsaid } from './below.js';
+import { advanceBelow, AMBIENT_ORDER, BELOW_TUNING, eyesOpen, fillSilence, lookBelow, startBelow, tierOf, unsaid } from './below.js';
 import { erode, resolveCoda, verdictOf } from './coda.js';
 import type { CodaContext, Door } from './coda.js';
 import type { BelowEvent, BelowPhase } from './below.js';
 import { BELIEF_OF_EMOTION, BELIEFS } from './types.js';
-import type { NarrationLine, ObjectId, SceneId, Stance, WorldState } from './types.js';
+import type { Belief, NarrationLine, ObjectId, SceneId, Stance, WorldState } from './types.js';
 
 /**
- * Three stances and one glance. `still`, `haunt` and `attune` each *are* a
- * stance — choosing one is the whole input, and choosing the one you are
- * already in is how you go on doing it. `wait` is the same thing said with no
- * hands: let whatever is happening go on. `look` is not a stance and costs
- * nothing; it is how a thing down here becomes a thing you can hold.
+ * Three stances and one glance. `still`/`haunt`/`attune` set a stance; `wait`
+ * leaves it alone. `look` is not a stance — it makes a thing holdable.
  */
 export type PlayerAction =
   | { kind: 'wait' }
@@ -28,24 +25,59 @@ export type PlayerAction =
   | { kind: 'look'; object: ObjectId };
 
 /**
- * Set by the first press that actually lands. Nothing in the simulation reads
- * it; it is what the presentation hangs the world coming into view on, so that
- * a run in which the presence never once acts stays dark.
+ * Set by the first press that lands. Unread by the sim; the presentation hangs
+ * the world coming into view on it, so a run that never acts stays dark.
  */
 export const HAS_PRESSED = 'presence.has-pressed';
 
 /** Set by the first refusal, so the one that states the rule is only said once. */
 const HAS_BEEN_REFUSED = 'presence.has-been-refused';
 
+/** A press that found nothing; the next one cannot. And: the rule has landed once. */
+const SILT_REFUSED = 'silt.refused';
+const SILT_TAUGHT = 'silt.taught';
+
 /**
- * Pushing with nothing left. Three, because in beat zero the cells push too
- * and a player finding that out will hit this several times in a row — one
- * line said three times reads as a broken button, and no line at all reads as
- * a broken game.
- *
- * The first states the rule and is only ever said once; the others are the
- * same fact without the instruction, because being told twice how to play is
- * worse than not being told at all.
+ * The five ambient subjects, after beat zero. Knowing yourself better turns one
+ * of them — drawn at random — into something you can look at, but not while
+ * somebody is at the rim: it waits for a quiet turn. One look each, and then it
+ * is an ordinary wall again.
+ */
+const QUEUED = (id: string): string => `subject.${id}.queued`;
+const OPEN = (id: string): string => `subject.${id}.open`;
+const SPENT = (id: string): string => `subject.${id}.spent`;
+const isAmbient = (id: string): boolean => (AMBIENT_ORDER as readonly string[]).includes(id);
+
+/** Drawn when lucidity moves, in either direction. */
+function queueSubject(game: Game): Game {
+  const locked = AMBIENT_ORDER.filter(
+    (id) => !game.state.flags[QUEUED(id)] && !game.state.flags[OPEN(id)] && !game.state.flags[SPENT(id)],
+  );
+  const pick = locked[Math.floor(game.rng.next() * locked.length)];
+  if (!pick) return game;
+  return withState(game, applyEffects(game.state, [{ kind: 'flag', flag: QUEUED(pick), value: true }]));
+}
+
+/** Released on an empty turn, so it never lands on top of a scene. */
+function openSubject(game: Game): { game: Game; line: string } | undefined {
+  const next = AMBIENT_ORDER.find((id) => game.state.flags[QUEUED(id)]);
+  const said = game.pack.noticing?.[tierOf(game.state.presence.lucidity, false)];
+  if (!next || !said) return undefined;
+  return {
+    game: withState(
+      game,
+      applyEffects(game.state, [
+        { kind: 'flag', flag: QUEUED(next), value: false },
+        { kind: 'flag', flag: OPEN(next), value: true },
+      ]),
+    ),
+    line: said,
+  };
+}
+
+/**
+ * Pushing with nothing left. Three variants so a run of refusals does not read
+ * as a broken button. Only the first states the rule.
  */
 const TOO_THIN = [
   'Nothing happens. You are too thin. You have to be still for a while first.',
@@ -54,13 +86,8 @@ const TOO_THIN = [
 ];
 
 /**
- * What a turn says when everything it had to say has already been said. Beat
- * zero never repeats itself, and a click that narrates nothing at all reads as
- * a dead control — so the turn admits there is nothing new here and leaves the
- * player to work out that they already have what this was going to give them.
- *
- * Exempt from the no-repeat rule, deliberately: it is the one thing down here
- * allowed to be said over and over.
+ * What a turn says when everything it had was already said. The one line
+ * exempt from beat zero's no-repeat rule.
  */
 export const NOTHING_NEW = '…';
 
@@ -70,19 +97,18 @@ const idle = (text: string): NarrationLine => ({ kind: 'idle', text });
 const system = (text: string): NarrationLine => ({ kind: 'system', text });
 
 export type Mode =
-  /** `lastAmbient` so an empty turn never says twice what it just said. */
-  | { kind: 'idle'; lastAmbient?: string }
+  /** `lastAmbient` so an empty turn never repeats itself; `lastReadout` so the
+   *  village is only read back when it has changed. */
+  | { kind: 'idle'; lastAmbient?: string; lastReadout?: string }
   | { kind: 'scene'; scene: SceneId; ctx: SceneContext }
   /** Beat zero. See `core/below.ts`. Disposable once the deck exists. */
   | { kind: 'below'; phase: BelowPhase }
-  /** The coda has been said. Nothing further is read, written or asked for. */
+  /** The coda has been said. Nothing further happens. */
   | { kind: 'over'; door: Door; spine: string };
 
 /**
- * Turns without a scene before a run that *could* still do something is
- * treated as having done nothing. This is starvation in miniature: the design
- * has attention decaying until nothing is dealable, the prototype has no
- * attention decay, and this stands in for it so the quiet run can still end.
+ * Sceneless turns before a still-open run counts as starvation. Stands in for
+ * the attention decay the prototype does not have, so quiet runs can end.
  */
 const STARVE_TURNS = 12;
 
@@ -100,72 +126,48 @@ export interface StepResult {
 }
 
 /**
- * Tunables. Kept together so pacing can be felt out in one place.
+ * Tunables, kept together so pacing can be felt out in one place.
  *
- * Two resources with different time signatures. Presence is renewable and pays
- * for pressing: it is the within-scene resource, and a full bar buys exactly two
- * presses, which is exactly `UNDENIABLE`. Belongings are finite and pay for
- * holding: they never come back, so they are the across-run resource.
+ * Two resources: presence is renewable and pays for pressing (within-scene);
+ * belongings are finite and pay for holding (across-run).
  */
 export const TUNING = {
   /** Recovered per turn spent still. Nothing else recovers presence. */
   stillness: 0.14,
-  /** Presence burned per turn spent pressing. A full bar does not last a scene. */
+  /** Presence burned per turn spent pressing. A full bar buys two presses. */
   pressCost: 0.34,
   /** Pressure added per turn of pressing inside a scene. */
   pressure: 0.3,
   /**
-   * Object charge burned per turn spent holding it. Never regained, and
-   * deliberately the same as `pressCost`: a full presence bar buys two
-   * presses, a belonging buys three holds, and both are gone. At 0.07 a
-   * belonging lasted fourteen turns, which is long enough to spend without
-   * thinking about it — and a resource you can spend without thinking is not
-   * the across-run resource the design needs it to be.
+   * Object charge burned per turn held. Never regained. Same as `pressCost`:
+   * a belonging is three holds, cheap enough to spend without thinking about.
    */
   holdCost: 0.34,
   /** Below this a belonging cannot be taken up again. */
   spent: 0.05,
   /**
-   * Multiplier on what a hold actually does to the people above. Three holds
-   * carry roughly a quarter of the charge fourteen did, so without this the
-   * cost change quietly deletes resonance as a lever — the reachability sweep
-   * catches it: `resonant` stops out-mourning `haunty`. Same total weight over
-   * a run, delivered in three decisive acts instead of fourteen idle ones,
-   * which is the regret the design is after.
+   * Multiplier on what a hold does to the people above. Compensates for three
+   * holds carrying ~a quarter of the charge fourteen did; without it resonance
+   * stops working as a lever and the reachability sweep catches it.
    */
   resonanceGain: 3.5,
   lucidityPerDiscovery: 0.2,
-  /**
-   * The first press, and only the first. Pushing is the one act that tells the
-   * presence it is a thing that can act at all, so it is worth a sliver of
-   * knowing itself — and it is the sliver everything visible is hung off.
-   */
+  /** The first press only. Everything visible is hung off this sliver. */
   lucidityFirstPress: 0.02,
   /** Base chance per idle turn that someone comes to the well. */
   sceneChance: 0.35,
-  /**
-   * Chance that a press into the empty dark turns up another belonging. Beat
-   * zero gives two; the rest are still in the silt and have to be pressed for,
-   * on presence that could have been saved for whoever comes next. That is the
-   * competition: knowing yourself is paid for out of the same bar as reaching
-   * the living, and a thing never found is a tier of the ending never reached.
-   */
-  siltChance: 0.45,
+  /** Chance a press into the empty dark turns up a belonging. */
+  siltChance: 0.4,
 };
 
 /**
- * How many holds a belonging has already cost, from what is left of it. Only
- * holding drains charge, so the count is exact — and it is what the per-use
- * prose is indexed on, so a thing reads differently the third time than the
- * first without anything having to remember it separately.
+ * Holds a belonging has already cost, from what is left. Exact, since only
+ * holding drains charge. Indexes the per-use prose.
  */
 const usesSpent = (charge: number): number =>
   Math.min(3, Math.max(0, Math.round((1 - charge) / TUNING.holdCost)));
 
-/**
- * Putting a thing down, in the words of the hold that just ended. Pressing is
- * let go of generically — there is nothing there to have cooled.
- */
+/** Putting a thing down, in the words of the hold that just ended. */
 function letGoOf(game: Game, stance: Stance): string {
   const generic = 'You let it go. The cold comes back in around the shape of it.';
   if (stance.kind !== 'holding') return generic;
@@ -175,10 +177,8 @@ function letGoOf(game: Game, stance: Stance): string {
 }
 
 /**
- * `below` is opt-in rather than the default: `sim/policies.ts` and the
- * reachability sweep instantiate games in bulk against a fixed turn budget,
- * and beat zero has nothing for a policy that only knows `scene`/`idle` to
- * do with it. CLI and web play pass `{ below: true }`.
+ * `below` is opt-in: the sweeps run bulk games on a fixed turn budget and
+ * their policies only know `scene`/`idle`. CLI and web pass `{ below: true }`.
  */
 export function newGame(pack: ContentPack, seed: number, opts?: { below?: boolean }): Game {
   const rng = makeRng(seed);
@@ -188,10 +188,8 @@ export function newGame(pack: ContentPack, seed: number, opts?: { below?: boolea
 
   if (opts?.below && phase) return { pack, state, mode: { kind: 'below', phase }, rng };
 
-  // Starting past the dark still starts *after* it: beat zero would have given
-  // up two, so a game that skips the phase is handed the same two rather than
-  // beginning with everything buried. Otherwise the sweep measures a harsher
-  // game than anybody actually plays.
+  // Skipping the phase still starts after it: hand over the two belongings
+  // beat zero would have given, or the sweep measures a harsher game.
   const given = phase ? phase.found : [];
   return {
     pack,
@@ -227,26 +225,41 @@ export function eligibleScenes(game: Game): Scene[] {
   });
 }
 
-function maybeStartScene(game: Game): { game: Game; lines: NarrationLine[] } {
+/**
+ * `force` skips the arrival roll for a turn that has already decided somebody
+ * is there (only beat zero ending). The weighting still chooses who.
+ */
+function maybeStartScene(game: Game, opts?: { force?: boolean }): { game: Game; lines: NarrationLine[] } {
   const candidates = eligibleScenes(game);
   if (candidates.length === 0) return { game, lines: [] };
 
   const chance = TUNING.sceneChance + game.state.well.attention * 0.4;
-  if (game.rng.next() > chance) return { game, lines: [] };
+  if (!opts?.force && game.rng.next() > chance) return { game, lines: [] };
 
   const picked = pickWeighted(game.rng, candidates, (s) => Math.max(0.0001, s.weight?.(game.state) ?? 1));
   if (!picked) return { game, lines: [] };
 
   const ctx: SceneContext = { pressure: 0, resonance: heldResonance(game), beatIndex: 0 };
+
+  // The coat is the one belonging that takes something away. Under it there is
+  // no scene: whoever came is missed, and the presence knows itself a little
+  // less for having chosen not to look. The scene itself is not spent.
+  if (ctx.resonance?.object === 'coat' && game.pack.hiding?.length) {
+    return {
+      game: withState(
+        game,
+        applyEffects(game.state, [{ kind: 'presence', field: 'lucidity', delta: -TUNING.lucidityPerDiscovery }]),
+      ),
+      lines: [fact(game.pack.hiding[game.state.turn % game.pack.hiding.length]!)],
+    };
+  }
+
   const next: Game = { ...game, mode: { kind: 'scene', scene: picked.id, ctx } };
   const first = picked.beats[0];
   return { game: next, lines: first ? [scene(first.text(next.state, ctx))] : [] };
 }
 
-/**
- * Resonance survives from idle into a scene — you set the mood before they
- * arrive, and pay for the waiting out of the belonging itself.
- */
+/** Resonance survives idle into a scene: the mood is set before they arrive. */
 function heldResonance(game: Game): SceneContext['resonance'] {
   const { stance } = game.state.presence;
   if (stance.kind !== 'holding') return null;
@@ -255,17 +268,24 @@ function heldResonance(game: Game): SceneContext['resonance'] {
   return { object: def.id, emotion: def.emotion, strength: def.power * (game.state.objects[def.id]?.charge ?? 0) };
 }
 
+/** A subject at the tier the presence has reached. Belongings run one ahead. */
+function subjectAt(game: Game, id: string, isBelonging: boolean): string | undefined {
+  const subject = game.pack.below?.[id];
+  if (!subject) return undefined;
+  return subject[tierOf(game.state.presence.lucidity, isBelonging)];
+}
+
+const glimpseAt = (game: Game, def: ObjectDef): string => game.pack.below?.[def.id]?.glimpse ?? def.name;
+
 /**
- * Two doors, as `MECHANICS.md` §4 has them: a road reaches its last step, or
- * nobody came. Beat zero is exempt — it has its own ending, and a phase with
- * no history yet would read as starved on its twelfth turn.
+ * Two doors: a road reaches its last step, or nobody came. Beat zero is exempt
+ * — no history yet, so it would read as starved on its twelfth turn.
  */
 function doorOut(game: Game): Door | null {
   if (game.mode.kind === 'over') return null;
 
-  // Beat zero has its own ending, and it is only for a presence that opened
-  // its eyes. One that never does is not waiting for anything: it starves
-  // where it lies, before a single person has come to the rim.
+  // Beat zero's own ending, only for a presence that opened its eyes. One that
+  // never does starves in the dark instead.
   if (game.mode.kind === 'below') {
     return !eyesOpen(game.mode.phase) && game.mode.phase.turn >= BELOW_TUNING.cap ? 'starved' : null;
   }
@@ -280,29 +300,28 @@ function doorOut(game: Game): Door | null {
 }
 
 export function step(game: Game, action: PlayerAction): StepResult {
-  // A finished run is finished. The controls still exist; they do nothing.
+  // A finished run is finished. The controls exist; they do nothing.
   if (game.mode.kind === 'over') return { game, lines: [] };
 
   const before = runStatus(game).kind;
+  const lucidityBefore = game.state.presence.lucidity;
   const lines: NarrationLine[] = [];
   let next: Game = withState(game, { ...game.state, turn: game.state.turn + 1 });
 
-  // 1. An action only ever sets a stance, or looks at something. `wait` leaves
-  //    the stance alone and lets it cost.
-  // Recovery is the turn's, not the stance's: being still while doing something
-  // else is not being still. One rule, and the player can feel all of it.
+  // 1. An action only sets a stance, or looks. `wait` leaves the stance alone
+  //    and lets it cost. Recovery is the turn's, not the stance's: being still
+  //    while doing something else is not being still.
   let gathering = action.kind === 'wait';
 
   switch (action.kind) {
     case 'wait':
       break;
     case 'still': {
-      // Choosing stillness *is* gathering. Arriving at it and having been in
-      // it are the same turn's worth, or the player cannot form the rule.
+      // Choosing stillness *is* gathering: arriving at it and having been in
+      // it are worth the same turn, or the player cannot form the rule.
       gathering = true;
       if (next.state.presence.stance.kind === 'still') {
-        // Going on being still is the default, and the default says nothing.
-        // The turn still passes and the water still settles.
+        // Going on being still is the default, and says nothing.
       } else {
         lines.push(fact(letGoOf(next, next.state.presence.stance)));
         next = setStance(next, { kind: 'still' });
@@ -311,6 +330,23 @@ export function step(game: Game, action: PlayerAction): StepResult {
       break;
     }
     case 'look': {
+      if (isAmbient(action.object)) {
+        if (next.state.flags[OPEN(action.object)] !== true) {
+          lines.push(fact('There is nothing to see there yet.'));
+          break;
+        }
+        // No lucidity: the tier is the count of belongings, and the coda says
+        // that count out loud. The cold cannot be allowed to move it.
+        lines.push(fact(subjectAt(next, action.object, false) ?? ''));
+        next = withState(
+          next,
+          applyEffects(next.state, [
+            { kind: 'flag', flag: OPEN(action.object), value: false },
+            { kind: 'flag', flag: SPENT(action.object), value: true },
+          ]),
+        );
+        break;
+      }
       const def = objectDef(next, action.object);
       if (!def || !next.state.objects[action.object]?.found) {
         lines.push(fact('There is nothing like that down here.'));
@@ -322,11 +358,9 @@ export function step(game: Game, action: PlayerAction): StepResult {
           lines.push(fact('There is nothing to see there yet.'));
           break;
         }
-        lines.push(fact(next.pack.below?.[def.id]?.plain ?? def.look));
         next = { ...next, mode: { kind: 'below', phase } };
-      } else {
-        lines.push(fact(def.look));
       }
+      lines.push(fact(subjectAt(next, def.id, true) ?? def.name));
       const wasNew = !next.state.objects[def.id]?.discovered;
       next = withState(
         next,
@@ -378,7 +412,7 @@ export function step(game: Game, action: PlayerAction): StepResult {
     }
   }
 
-  // 2. The stance costs, or recovers, once per turn. This is the whole economy.
+  // 2. The stance costs or recovers once per turn. The whole economy.
   const ticked = tick(next, gathering);
   next = ticked.game;
   lines.push(...ticked.lines);
@@ -394,15 +428,37 @@ export function step(game: Game, action: PlayerAction): StepResult {
     const wasIdle = next.mode.kind === 'idle' ? next.mode : undefined;
     const started = maybeStartScene(next);
     let game = started.game;
-    if (started.lines.length === 0 && lines.length === 0) {
-      const said = ambient(next, wasIdle?.lastAmbient);
+    const woken = started.lines.length === 0 && lines.length === 0 ? openSubject(game) : undefined;
+    if (woken) {
+      game = woken.game;
+      lines.push(idle(woken.line));
+    } else if (started.lines.length === 0 && lines.length === 0) {
+      const heard = readout(game, wasIdle?.lastReadout);
+      const said = heard?.line ?? ambient(next, wasIdle?.lastAmbient);
       lines.push(idle(said));
-      if (game.mode.kind === 'idle') game = { ...game, mode: { kind: 'idle', lastAmbient: said } };
+      const lastAmbient = heard ? wasIdle?.lastAmbient : said;
+      const lastReadout = heard?.key ?? wasIdle?.lastReadout;
+      if (game.mode.kind === 'idle') {
+        game = {
+          ...game,
+          mode: {
+            kind: 'idle',
+            ...(lastAmbient ? { lastAmbient } : {}),
+            ...(lastReadout ? { lastReadout } : {}),
+          },
+        };
+      }
     }
     result = { game, lines: [...lines, ...started.lines] };
   }
 
-  // 4. And then, if there is nothing left to be, the run says what it was.
+  // 3b. Knowing yourself better — or worse, under the coat — puts one of the
+  //     five in the queue. It comes out on some later quiet turn.
+  if (result.game.mode.kind !== 'below' && result.game.state.presence.lucidity !== lucidityBefore) {
+    result = { ...result, game: queueSubject(result.game) };
+  }
+
+  // 4. And then, if nothing is left, the run says what it was.
   const door = doorOut(result.game);
   if (door && result.game.pack.coda) {
     const coda = result.game.pack.coda;
@@ -416,10 +472,8 @@ export function step(game: Game, action: PlayerAction): StepResult {
     let state = result.game.state;
     let told = resolveCoda(coda, read(state));
 
-    // Being forgotten is the one ending that takes something back as it is
-    // told. Whatever the presence had worked out about itself goes first —
-    // there is nobody left for it to be true in front of — so the close drops
-    // to `veiled` and the words come apart as they are read.
+    // Being forgotten takes something back as it is told: lucidity goes first,
+    // so the close drops to `veiled` and the words erode as they are read.
     if (told.spine === 'forgotten') {
       state = { ...state, presence: { ...state.presence, lucidity: 0 } };
       told = resolveCoda(coda, read(state));
@@ -433,8 +487,8 @@ export function step(game: Game, action: PlayerAction): StepResult {
     };
   }
 
-  // The stop lines only speak for a run that has not ended — once the coda
-  // exists they would be announcing an ending that is about to be told properly.
+  // The stop lines only speak for a run that has not ended; otherwise they
+  // announce an ending the coda is about to tell properly.
   const after = runStatus(result.game).kind;
   if (after !== before && !door) {
     if (after === 'stalled') result.lines.push(system(STALLED_LINE));
@@ -445,8 +499,7 @@ export function step(game: Game, action: PlayerAction): StepResult {
 
 /**
  * One rule, no exceptions: stillness is the only thing that recovers presence.
- * Looking does not, releasing does not, holding does not. A player has to be
- * able to tell where their charge comes from without being told.
+ * Not looking, not releasing, not holding.
  */
 function tick(game: Game, gathering: boolean): { game: Game; lines: NarrationLine[]; exhausted?: boolean } {
   const { stance } = game.state.presence;
@@ -489,27 +542,35 @@ function tick(game: Game, gathering: boolean): { game: Game; lines: NarrationLin
       return { game: next, lines: [fact('The water answers. It is the only thing down here that does.')] };
     }
 
-    // Pressing at nobody is a waste of the bar — except that the silt is still
-    // holding what beat zero did not give up, and this is the only thing that
-    // shakes it loose.
+    // Pressing at nobody wastes the bar — except it is the only thing that
+    // shakes loose what beat zero left in the silt.
     const buried = next.pack.objects.find((o) => !next.state.objects[o.id]?.found);
-    if (buried && next.rng.next() < TUNING.siltChance) {
+    const owed = !next.state.flags[SILT_TAUGHT] || next.state.flags[SILT_REFUSED] === true;
+    if (buried && (owed || next.rng.next() < TUNING.siltChance)) {
       return {
-        game: withState(next, applyEffects(next.state, [{ kind: 'object', object: buried.id, field: 'found', value: true }])),
+        game: withState(
+          next,
+          applyEffects(next.state, [
+            { kind: 'object', object: buried.id, field: 'found', value: true },
+            { kind: 'flag', flag: SILT_TAUGHT, value: true },
+            { kind: 'flag', flag: SILT_REFUSED, value: false },
+          ]),
+        ),
         lines: [
           fact('You push against nothing at all, and the silt gives something back.'),
-          fact(next.pack.below?.[buried.id]?.glimpse ?? buried.glimpse ?? buried.name),
+          fact(glimpseAt(next, buried)),
         ],
       };
     }
+    if (buried) next = withState(next, applyEffects(next.state, [{ kind: 'flag', flag: SILT_REFUSED, value: true }]));
     return { game: next, lines: [fact('You push against nothing at all. The dark takes it without comment.')] };
   }
 
   const def = objectDef(game, stance.object);
   const obj = def ? game.state.objects[def.id] : undefined;
   if (!def || !obj || obj.charge <= TUNING.spent) {
-    // The last hold ends whether or not the player let go of it, and it ends
-    // in the thing's own words — this is the only moment it is ever final.
+    // The last hold ends whether or not the player let go, in the thing's own
+    // words — the only moment it is ever final.
     return {
       game: setStance(game, { kind: 'still' }),
       lines: [
@@ -531,8 +592,8 @@ function tick(game: Game, gathering: boolean): { game: Game; lines: NarrationLin
 }
 
 /**
- * Beat zero. `maybeStartScene` never runs while this mode holds — the run
- * does not begin until the light crosses (`BEAT_ZERO.md`, "ending").
+ * Beat zero. `maybeStartScene` never runs while this mode holds: the run does
+ * not begin until the light crosses.
  */
 function advanceBelowMode(
   game: Game,
@@ -545,13 +606,14 @@ function advanceBelowMode(
     presenceCharge: game.state.presence.charge,
     pressedThisTurn: input.pressedThisTurn,
     exhaustedThisTurn: input.exhaustedThisTurn,
+    siltRolled: game.rng.next() < TUNING.siltChance,
   });
 
   let next: Game = { ...game, mode: { kind: 'below', phase } };
 
-  // What the player caused is already in `lines` and is never held back — it
-  // is the answer to their input. Everything else sorts into two piles: what
-  // this turn is *about*, and what the world happens to have ready.
+  // What the player caused is already in `lines` and is never held back.
+  // Everything else sorts into what this turn is about (`now`) and what the
+  // world merely has ready (`later`).
   const now: NarrationLine[] = [];
   const later: NarrationLine[] = [];
   let crossing: NarrationLine[] = [];
@@ -565,10 +627,15 @@ function advanceBelowMode(
       ended = true;
       crossing = belowEventLines(next, event);
     } else if (event.kind === 'glimpse') {
-      // The silt giving something up is the whole point of the press that
-      // found it, so it is never made to wait.
+      // The point of the press that found it, so it never waits.
       now.push(...belowEventLines(next, event));
-      next = withState(next, applyEffects(next.state, [{ kind: 'object', object: event.object, field: 'found', value: true }]));
+      next = withState(
+        next,
+        applyEffects(next.state, [
+          { kind: 'object', object: event.object, field: 'found', value: true },
+          { kind: 'flag', flag: SILT_TAUGHT, value: true },
+        ]),
+      );
     } else {
       later.push(...belowEventLines(next, event));
     }
@@ -579,59 +646,65 @@ function advanceBelowMode(
   const released = queue.slice(0, budget);
   queue = queue.slice(budget);
 
-  // The phase does not finish while it still owes the player something — but
-  // the cap is the cap, and at the cap whatever is left is said at once.
+  // The phase does not finish while it still owes lines — except at the cap,
+  // where whatever is left is said at once.
   const finishing = ended && (queue.length === 0 || phase.turn >= BELOW_TUNING.cap);
   lines.push(...now, ...released);
   if (finishing) {
-    lines.push(...queue, ...crossing);
+    lines.push(...queue);
     queue = [];
   }
   ended = finishing;
 
-  // Nothing is said twice down here. The guard covers every source at once —
-  // the stance lines from `tick`, the subjects, the transitions — because it
-  // filters the finished turn rather than each place that writes one.
+  // Nothing is said twice down here. Filtering the finished turn covers every
+  // source at once: stance lines, subjects, transitions.
   const guard = unsaid(phase, lines.map((line) => line.text));
   let fresh = lines.filter((_, i) => guard.keep[i]);
   const swallowed = lines.length > 0 && fresh.length === 0;
 
-  // A run of silent turns eventually says something about the dark — but not
-  // every gap, because down here the water answers on its own.
-  const silence = fillSilence(guard.phase, fresh.length > 0);
+  // A run of silent turns eventually says something about the dark, but not
+  // every gap — the water answers on its own. Never on the ending turn:
+  // filler in front of an arrival is worse than the silence.
+  const silence = fillSilence(guard.phase, fresh.length > 0 || ended);
   let settled = silence.phase;
-  if (silence.speak) {
+  if (silence.speak && !ended) {
     const pool = (next.pack.belowProse?.settling ?? []).filter((line) => !settled.said.includes(line));
     const line = pool[Math.floor(next.rng.next() * pool.length)];
     if (line) {
       fresh = [...fresh, idle(line)];
       settled = { ...settled, said: [...settled.said, line] };
     }
-  } else if (swallowed) {
-    // Everything this turn had was already said. Say so, rather than nothing.
+  } else if (swallowed && !ended) {
+    // Everything this turn had was already said. Say so rather than nothing.
     fresh = [idle(NOTHING_NEW)];
   }
 
-  next = {
-    ...next,
-    mode: ended ? { kind: 'idle' } : { kind: 'below', phase: { ...settled, pending: queue } },
-  };
+  // The light crossing *is* the run beginning: whoever comes to the rim opens
+  // on this same turn and their first beat is the crossing, so it is not
+  // narrated twice. `lightCrossing` covers a rim with nobody at it — currently
+  // unreachable, since the cast is present from turn one.
+  if (ended) {
+    const opened = maybeStartScene({ ...next, mode: { kind: 'idle' } }, { force: true });
+    if (opened.lines.length > 0) return { game: opened.game, lines: [...fresh, ...opened.lines] };
+    return { game: { ...next, mode: { kind: 'idle' } }, lines: [...fresh, ...crossing] };
+  }
+
+  next = { ...next, mode: { kind: 'below', phase: { ...settled, pending: queue } } };
   return { game: next, lines: fresh };
 }
 
 function belowEventLines(game: Game, event: BelowEvent): NarrationLine[] {
-  const subjects = game.pack.below ?? {};
   const prose = game.pack.belowProse;
   switch (event.kind) {
-    case 'ambient':
-      return subjects[event.subject] ? [fact(subjects[event.subject]!.veiled)] : [];
+    case 'ambient': {
+      const said = subjectAt(game, event.subject, false);
+      return said ? [fact(said)] : [];
+    }
     case 'movement':
       return ((event.to === 2 ? prose?.toMovementII : event.to === 3 ? prose?.toMovementIII : undefined) ?? []).map(fact);
     case 'glimpse': {
-      const subject = subjects[event.object];
-      if (subject?.glimpse) return [fact(subject.glimpse)];
       const def = objectDef(game, event.object);
-      return def ? [fact(def.glimpse ?? def.name)] : [];
+      return def ? [fact(glimpseAt(game, def))] : [];
     }
     case 'end':
       return (prose?.lightCrossing ?? []).map(fact);
@@ -667,11 +740,9 @@ function advanceScene(game: Game, lines: NarrationLine[]): StepResult {
 }
 
 /**
- * Resonance bleeds into everyone present regardless of what the scene's own
- * outcome did. This is the quiet channel: no phenomena, just a mood arriving.
- *
- * It has to move the *village*, not only the person — a mood people cannot
- * account for is talked about, and talk is what the late game reads.
+ * Resonance bleeds into everyone present regardless of the scene's outcome:
+ * the quiet channel, a mood arriving. Moves the village too, not just the
+ * person — talk is what the late game reads.
  */
 function resonanceEffects(game: Game, scene: Scene, ctx: SceneContext): Effect[] {
   if (!ctx.resonance) return [];
@@ -696,9 +767,37 @@ function resonanceEffects(game: Game, scene: Scene, ctx: SceneContext): Effect[]
 
 /**
  * An empty turn's texture. Never the same line twice running: the pool is
- * small and heard often, and a line repeated back to back stops reading as
- * the world going on and starts reading as the machine going round.
+ * small, and back-to-back repeats read as the machine going round.
  */
+/** A quality has to be this loud before the village has anything to say. */
+const READOUT_FLOOR = 0.3;
+/** The well's own two dials go further than a belief does, so they get a second band. */
+const READOUT_LOUD = 0.6;
+
+/**
+ * The village, said back. Loudest quality wins, and only when it is not the one
+ * said last: repeated every turn it would be weather instead of news.
+ */
+function readout(game: Game, avoid?: string): { key: string; line: string } | undefined {
+  const lines = game.pack.readout;
+  if (!lines) return undefined;
+  const { beliefs, well } = game.state;
+  // A dial this far up outranks any opinion: what the well has become is
+  // louder than what is being said about it.
+  const dials: [string, number][] = [['attention', well.attention], ['dread', well.dread]];
+  const loud = dials.filter(([, v]) => v > READOUT_LOUD).sort((a, b) => b[1] - a[1])[0];
+  const ranked: [string, number][] = [...Object.entries(beliefs), ...dials];
+  const [name, value] = loud ?? ranked.sort((a, b) => b[1] - a[1])[0]!;
+  if (value <= READOUT_FLOOR) return undefined;
+
+  const dial = name === 'attention' || name === 'dread';
+  const band = dial && value > READOUT_LOUD ? 1 : 0;
+  const key = dial ? `${name}.${band}` : name;
+  if (key === avoid) return undefined;
+  const line = dial ? lines[name as 'attention' | 'dread'][band] : lines.beliefs[name as Belief];
+  return line ? { key, line } : undefined;
+}
+
 function ambient(game: Game, avoid?: string): string {
   const all = game.pack.ambient ?? ['Nothing. The stone sweats. Somewhere above, the light moves a hand-width.'];
   const pool = all.length > 1 ? all.filter((line) => line !== avoid) : all;
@@ -706,11 +805,9 @@ function ambient(game: Game, avoid?: string): string {
 }
 
 // ---------------------------------------------------------------------------
-// The stop
-//
-// Not an ending — there is no coda yet, and this is not it. This only answers
-// "is anything still capable of happening", so a run can say so out loud
-// instead of leaving the player waiting at the bottom of a finished world.
+// The stop. Not an ending — only "is anything still capable of happening", so
+// a run can say so instead of leaving the player at the bottom of a finished
+// world.
 // ---------------------------------------------------------------------------
 
 export const STALLED_LINE =
@@ -720,10 +817,8 @@ export const QUIET_LINE =
   'Nothing is coming that has not already come. The light will go on moving across the water, and that is all it will ever do now.';
 
 /**
- * Three states, because two would lie. A world where the player has stopped the
- * story is not the same as a world that has finished telling it, and a run that
- * says "nothing will happen" when haunting once would open the next gate has
- * told the player something false.
+ * Three states, because two would lie: a world the player has stalled is not
+ * a world that has finished telling itself.
  */
 export type RunStatus =
   | { kind: 'open' }
@@ -733,10 +828,9 @@ export type RunStatus =
   | { kind: 'quiet'; reason: string };
 
 /**
- * Probe worlds for asking whether a gate *could* ever open. `requires` is an
- * arbitrary predicate, so this is a heuristic, not a proof: it tries the world
- * as it is, as good as it could get, and as bad. A gate satisfied by none of
- * the three is treated as shut for good.
+ * Probe worlds for asking whether a gate could ever open. `requires` is an
+ * arbitrary predicate, so this is a heuristic: the world as it is, at best,
+ * and at worst. Satisfied by none of the three means shut for good.
  */
 function probes(state: WorldState): WorldState[] {
   const padding = Array.from({ length: 32 }, (_, i) => ({ scene: '__probe', outcome: '__probe', turn: state.turn + i }));

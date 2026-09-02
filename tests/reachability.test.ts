@@ -2,10 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { pack } from '../src/content/index.js';
 import { POLICIES, sweep } from '../src/sim/policies.js';
 
-/**
- * The story is a graph and the levers are the edges. These tests exist so that
- * writing a branch nobody can get to fails loudly instead of quietly.
- */
+/** So that writing a branch nobody can reach fails loudly instead of quietly. */
 const reports = POLICIES.map((policy) => ({ policy, report: sweep(pack, policy, { runs: 120, turns: 60 }) }));
 const hits = (key: string): number =>
   reports.reduce((max, { report }) => Math.max(max, report.reached.get(key) ?? 0), 0);

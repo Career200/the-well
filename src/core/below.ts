@@ -1,16 +1,13 @@
 /**
- * Beat zero's phase runner — the spike specced in `story/BEAT_ZERO.md` and
- * `BEAT_ZERO_PLAN.md`. Everything here but `tierOf` is disposable: it goes
- * away once the ambient five and the two belongings become ordinary
- * situations in the finished deck.
- *
- * `tierOf` does not go away. Every subject in the finished game reads through
- * it, so it is written once, tested on its own, and left alone.
+ * Beat zero's phase runner. Everything here but `tierOf` is disposable — it
+ * goes away once the five ambient subjects and the belongings become ordinary
+ * situations in the finished deck. `tierOf` stays: every subject reads through
+ * it.
  */
 import { band } from './readout.js';
 import type { NarrationLine, ObjectId } from './types.js';
 
-/** The nine subjects, as data. Populated (content/below.ts) from `story/descriptions/below.md`. */
+/** The nine subjects, as data. Populated in `content/below.ts`. */
 export interface BelowSubject {
   id: string;
   /** Belongings only — what you can tell before pressing turns it up. */
@@ -26,20 +23,17 @@ export type Tier = 'veiled' | 'plain' | 'named';
 const TIERS: readonly Tier[] = ['veiled', 'plain', 'named'];
 
 /**
- * Permanent. Belongings run one tier ahead of everything else — they are the
- * surface where the presence knows itself best, so they reach the direct
- * register before the walls and the water do (`STORY_MACHINE.md` §2).
+ * Permanent. Belongings run one tier ahead: they are where the presence knows
+ * itself best, so they reach the direct register first.
  */
 export function tierOf(lucidity: number, isBelonging: boolean): Tier {
-  // Pinned to discovery counts, not to a continuum: with four belongings at
-  // `lucidityPerDiscovery` each, all four reaches `named`, missing one lands
-  // on `plain`, and missing two leaves the presence `veiled`. One thing not
-  // looked at is one ending not reached.
+  // Pinned to discovery counts, not a continuum: at `lucidityPerDiscovery`
+  // each, four belongings is `named`, three `plain`, two or fewer `veiled`.
   const step = band(lucidity, [[0.75, 2], [0.55, 1]] as const, 0);
   return TIERS[Math.min(2, step + (isBelonging ? 1 : 0))]!;
 }
 
-/** Fixed order. Resolves whether or not the player acts (`BEAT_ZERO.md`, movement I). */
+/** Fixed order. Resolves whether or not the player acts. */
 export const AMBIENT_ORDER = ['cold', 'water', 'walls', 'sky', 'silt'] as const;
 export type AmbientId = (typeof AMBIENT_ORDER)[number];
 
@@ -53,6 +47,8 @@ export interface BelowPhase {
   /** The two belongings reachable this run, drawn once at phase start. */
   found: [ObjectId, ObjectId];
   seen: Partial<Record<ObjectId, 'glimpse' | 'plain'>>;
+  /** The silt owes one. */
+  owed: boolean;
   wasLow: boolean;
   exhausted: boolean;
   /** Consecutive turns that narrated nothing. See `BELOW_TUNING.quietRun`. */
@@ -60,47 +56,38 @@ export interface BelowPhase {
   /** Every line already said down here. Nothing is ever said twice. */
   said: string[];
   /**
-   * World-clock lines that did not fit in their own turn's budget, oldest
-   * first. They keep their order, so the ambient five still resolve in the
-   * order they were written.
+   * World-clock lines that did not fit their turn's budget, oldest first. They
+   * keep their order, so the ambient five resolve as written.
    */
   pending: NarrationLine[];
 }
 
-/**
- * The two numbers `BEAT_ZERO_PLAN.md` §4 leaves for the keyboard. Tried here
- * as the doc suggests it — partial recovery, not a full bar — and meant to
- * move once this has actually been played and timed (plan §6 steps 3–4).
- */
+/** Provisional — meant to move once this has been played and timed. */
 export const BELOW_TUNING = {
   /** Hard ceiling. The light crosses past this regardless of the player's state. */
   cap: 16,
   /** Movement II's lesson lands on partial recovery, not a full bar. */
-  recoverFloor: 0.45,
-  /** Charge has to have dipped under this for recovering past it to read as a move. */
+  recoverFloor: 0.3,
+  /** Charge must have dipped under this for recovering past it to read as a move. */
   lowFloor: 0.2,
   /** Turns between one ambient subject resolving and the next, in the dark. */
   ambientEvery: 2,
   /**
-   * How far the dark resolves for a presence that has never once acted. The
-   * cold, the water and the walls are what arrives whether you want it or
-   * not — they are pressing against you. The sky and the silt are *looked at*,
-   * and nothing looks at anything until it has found out it can act at all.
+   * How far the dark resolves for a presence that has never acted. The cold,
+   * the water and the walls press against you regardless; the sky and the silt
+   * are *looked at*, and nothing looks until it knows it can act.
    */
   ambientWithoutPressing: 3,
   /**
-   * Silent turns to allow before the dark says something about itself. One
-   * quiet beat is not dead air — the water answers every press and settles
-   * visibly on every still turn — so filling every gap with a line makes the
-   * phase read as chattier than it is.
+   * Silent turns allowed before the dark says something about itself. A quiet
+   * beat is not dead air — the water answers every press — so filling every
+   * gap reads as chattier than the phase is.
    */
   quietRun: 2,
   /**
-   * Lines a single turn may narrate. Three clocks can come due at once down
-   * here — what the player did, what the economy did about it, and where the
-   * phase's own schedule had got to — and three unrelated sentences arriving
-   * together read as a wall rather than as a beat. What the player caused is
-   * always said; the world's own lines wait their turn.
+   * Lines a turn may narrate. Three clocks can come due at once (the player,
+   * the economy, the phase schedule) and three sentences read as a wall. What
+   * the player caused is always said; the world's own lines wait.
    */
   linesPerTurn: 2,
 } as const;
@@ -119,6 +106,7 @@ export function startBelow(pick: () => number, belongingIds: readonly ObjectId[]
     revealed: [],
     found: [pool[0]!, pool[1]!],
     seen: {},
+    owed: true,
     wasLow: false,
     exhausted: false,
     quiet: 0,
@@ -128,12 +116,9 @@ export function startBelow(pick: () => number, belongingIds: readonly ObjectId[]
 }
 
 /**
- * Beat zero is short, linear, and read closely, so a sentence the player has
- * already had lands as the machine showing through. Nothing repeats: a line
- * already said is dropped, and the turn goes by on the water alone — which is
- * legible now that the surface answers every press and settles on every still
- * turn. Once the phase is over the ordinary run has no such rule; repetition
- * up there is `times.withCast`'s job, and it is a feature.
+ * Beat zero is short and read closely, so a repeated sentence reads as the
+ * machine showing through: a line already said is dropped and the turn goes by
+ * on the water alone. The ordinary run has no such rule.
  */
 export function unsaid(phase: BelowPhase, lines: readonly string[]): { phase: BelowPhase; keep: boolean[] } {
   const said = new Set(phase.said);
@@ -146,9 +131,8 @@ export function unsaid(phase: BelowPhase, lines: readonly string[]): { phase: Be
 }
 
 /**
- * Whether the dark should say something about itself this turn, given the
- * turn narrated nothing on its own. Returns the phase either way, because the
- * run of silence is state like anything else.
+ * Whether the dark should say something about itself, given a turn that
+ * narrated nothing. Returns the phase either way: the silent run is state.
  */
 export function fillSilence(phase: BelowPhase, narrated: boolean): { phase: BelowPhase; speak: boolean } {
   if (narrated) return { phase: { ...phase, quiet: 0 }, speak: false };
@@ -158,9 +142,9 @@ export function fillSilence(phase: BelowPhase, narrated: boolean): { phase: Belo
 }
 
 /**
- * Whether the presence has found out it can act at all. One press that lands,
- * or one that empties it, and it knows. Nothing down here opens until then:
- * not the sky, not the silt, and not the way out.
+ * Whether the presence has found out it can act at all — one press that lands,
+ * or one that empties it. Nothing opens until then: not the sky, not the silt,
+ * not the way out.
  */
 export const eyesOpen = (phase: BelowPhase): boolean => phase.pressCount > 0 || phase.exhausted;
 
@@ -174,13 +158,14 @@ export interface BelowInput {
   presenceCharge: number;
   pressedThisTurn: boolean;
   exhaustedThisTurn: boolean;
+  /** The engine's dice, so the phase stays pure. */
+  siltRolled: boolean;
 }
 
 /**
- * Conditions, not a script — every transition is a threshold on state the
- * engine already tracks (`BEAT_ZERO_PLAN.md` §3). The hard cap is what makes
- * this total: a player who only ever presses, or only ever waits, still
- * reaches the end inside it.
+ * Conditions, not a script: every transition is a threshold on state the
+ * engine already tracks. The hard cap makes it total — a player who only
+ * presses, or only waits, still reaches the end inside it.
  */
 export function advanceBelow(phase: BelowPhase, input: BelowInput): { phase: BelowPhase; events: BelowEvent[] } {
   const events: BelowEvent[] = [];
@@ -192,9 +177,8 @@ export function advanceBelow(phase: BelowPhase, input: BelowInput): { phase: Bel
     wasLow: phase.wasLow || input.presenceCharge < BELOW_TUNING.lowFloor,
   };
 
-  // I. the dark — the ambient subjects resolve on their own clock, in fixed
-  // order, and they stop at the walls until the presence has acted once. The
-  // eyes are not open yet; there is no seeing the sky before that.
+  // I. the dark — ambient subjects resolve on their own clock, in fixed order,
+  // stopping at the walls until the presence has acted once.
   const reach = eyesOpen(next) ? AMBIENT_ORDER.length : BELOW_TUNING.ambientWithoutPressing;
   if (next.revealed.length < reach && next.turn % BELOW_TUNING.ambientEvery === 0) {
     const subject = AMBIENT_ORDER[next.revealed.length]!;
@@ -214,18 +198,19 @@ export function advanceBelow(phase: BelowPhase, input: BelowInput): { phase: Bel
     events.push({ kind: 'movement', to: 3 });
   }
 
-  // III. Pressing disturbs the silt and gives up one belonging at a time.
-  if (next.movement === 3 && input.pressedThisTurn) {
-    const target = next.found.find((id) => !next.seen[id]);
-    if (target) {
-      next = { ...next, seen: { ...next.seen, [target]: 'glimpse' } };
+  // One on the second press, then the same debt the idle game runs.
+  const target = input.pressedThisTurn && next.pressCount >= 2 ? next.found.find((id) => !next.seen[id]) : undefined;
+  if (target) {
+    if (next.owed || input.siltRolled) {
+      next = { ...next, owed: false, seen: { ...next.seen, [target]: 'glimpse' } };
       events.push({ kind: 'glimpse', object: target });
+    } else {
+      next = { ...next, owed: true };
     }
   }
 
-  // The light does not cross for a presence that never opened its eyes. There
-  // is no ending here for someone who never began — the run starves instead,
-  // still in the dark, and that is the whole of what happened to them.
+  // The light does not cross for a presence that never opened its eyes: no
+  // ending for someone who never began — the run starves in the dark instead.
   const done =
     eyesOpen(next) &&
     ((next.revealed.length === AMBIENT_ORDER.length && next.found.some((id) => next.seen[id] === 'plain')) ||

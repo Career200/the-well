@@ -15,10 +15,8 @@ const play = (game: Game, actions: PlayerAction[]): Game =>
 const wait = (n: number): PlayerAction[] => Array.from({ length: n }, () => ({ kind: 'wait' as const }));
 
 /**
- * The silt having given something up. Belongings are not reachable until it
- * has — two arrive in beat zero, the rest are pressed for — and these tests
- * are about what `look` and `attune` do once a thing is there, not about how
- * it got there.
+ * The silt having given something up. These tests are about what `look` and
+ * `attune` do once a thing is there, not how it got there.
  */
 const found = (game: Game, ...ids: string[]): Game => ({
   ...game,
@@ -80,7 +78,7 @@ describe('presence economy', () => {
     expect(game.state.presence.stance.kind).toBe('pressing');
     expect(game.state.presence.charge).toBeCloseTo(1 - TUNING.pressCost * 2, 5);
 
-    // and a full bar buys exactly two presses, which is exactly UNDENIABLE
+    // a full bar buys exactly two presses, which is exactly UNDENIABLE
     expect(game.state.presence.charge).toBeLessThan(TUNING.pressCost);
     expect(TUNING.pressure * 2).toBeGreaterThanOrEqual(0.6);
   });
@@ -164,7 +162,7 @@ describe('belongings', () => {
     expect(game.state.objects.ring!.charge).toBeLessThanOrEqual(TUNING.spent);
     expect(game.state.presence.stance.kind).toBe('still');
 
-    // Asked for again, from a run still going: a cold thing stays cold.
+    // asked for again, mid-run: a cold thing stays cold
     const fresh = found(newGame(pack, 3), 'ring');
     const ring = fresh.state.objects.ring!;
     const spent: Game = {
@@ -183,7 +181,7 @@ describe('the stop', () => {
   it('a run where the player does nothing runs out of world', () => {
     let game = newGame(pack, 21);
     for (let i = 0; i < 200; i++) game = step(game, { kind: 'wait' }).game;
-    // it used to sit in `stalled` forever announcing itself; now it ends.
+    // it used to sit in `stalled` forever announcing itself
     expect(game.mode.kind).toBe('over');
   });
 
@@ -295,7 +293,7 @@ describe('the coda', () => {
     // whatever it had worked out about itself goes first
     expect(game.state.presence.lucidity).toBe(0);
 
-    // and the words come apart as they are read — more of them, further in
+    // the words come apart as they are read — more of them, further in
     const authored = pack.coda!.spines.find((s) => s.id === 'forgotten')!.text;
     expect(coda[0]).not.toEqual(authored);
     const holes = (s: string) => (s.match(/ {2,}/g) ?? []).length / s.length;
@@ -306,10 +304,8 @@ describe('the coda', () => {
   });
 
   it('never hands over a belonging the player did not go and find', () => {
-    // The tier is the count: `named` is four looked at, `plain` is exactly
-    // three, `veiled` is two or fewer. So below `named` a close may say how
-    // many there were but must not say *which* — the one that was missed
-    // cannot arrive in the ending for free.
+    // Below `named` a close may say how many there were but never which: the
+    // one that was missed cannot arrive in the ending for free.
     const base = newGame(pack, 1).state;
     const ctx = { state: base, door: 'starved' as const, verdict: null };
     const names = pack.objects.map((o) => o.id);
@@ -349,7 +345,7 @@ describe('scene resolution', () => {
     const ctx = { pressure: 0.9, resonance: null, beatIndex: 3 };
     const after = applyEffects(base, resolveOutcome(firstWater, base, ctx).effects(base, ctx));
     expect(after.beliefs.haunted).toBeGreaterThan(base.beliefs.haunted);
-    expect(after.people.mira!.emotions.fear).toBeGreaterThan(base.people.mira!.emotions.fear);
+    expect(after.people.anna!.emotions.fear).toBeGreaterThan(base.people.anna!.emotions.fear);
   });
 });
 
@@ -390,5 +386,71 @@ describe('content sanity', () => {
         }
       }
     }
+  });
+});
+
+describe('the village, said back', () => {
+  const idle = (game: Game): Game => ({ ...game, mode: { kind: 'idle' } });
+  const lines = new Set([
+    ...Object.values(pack.readout!.beliefs),
+    ...pack.readout!.attention,
+    ...pack.readout!.dread,
+  ]);
+
+  it('says nothing about a village that has not decided anything', () => {
+    let game = idle(newGame(pack, 5));
+    for (let i = 0; i < 20; i++) {
+      const { game: next, lines: said } = step(game, { kind: 'wait' });
+      game = next;
+      expect(said.filter((l) => lines.has(l.text))).toEqual([]);
+    }
+  });
+
+  it('reads the loudest quality once, not every turn', () => {
+    let game = idle(newGame(pack, 5));
+    game = { ...game, state: applyEffects(game.state, [{ kind: 'belief', belief: 'tragedy', delta: 0.5 }]) };
+    // Said when it is news, and after a scene it is news again — but never on
+    // two turns running, or it stops being a reading and becomes weather.
+    let heard = 0;
+    let last = false;
+    for (let i = 0; i < 20; i++) {
+      const { game: next, lines: said } = step(game, { kind: 'wait' });
+      game = next;
+      const now = said.some((l) => l.text === pack.readout!.beliefs.tragedy);
+      expect(now && last).toBe(false);
+      last = now;
+      if (now) heard++;
+    }
+    expect(heard).toBeGreaterThan(0);
+  });
+});
+
+describe('hiding under the coat', () => {
+  it('misses whoever came, and costs a discovery', () => {
+    const start = found(newGame(pack, 3), 'coat');
+    let game: Game = {
+      ...start,
+      mode: { kind: 'idle' },
+      state: {
+        ...start.state,
+        presence: { ...start.state.presence, lucidity: 0.6 },
+        objects: { ...start.state.objects, coat: { ...start.state.objects['coat']!, discovered: true } },
+      },
+    };
+    game = play(game, [{ kind: 'attune', object: 'coat' }]);
+    const before = game.state.presence.lucidity;
+
+    // Only while there is coat left to hide under: three holds and it is cold,
+    // the stance drops, and the well is open to whoever comes next.
+    let hidden = 0;
+    for (let i = 0; i < 6; i++) {
+      const { game: next, lines } = step(game, { kind: 'wait' });
+      game = next;
+      if (!lines.some((l) => pack.hiding!.includes(l.text))) continue;
+      hidden++;
+      expect(game.mode.kind).not.toBe('scene');
+    }
+    expect(hidden).toBeGreaterThan(0);
+    expect(game.state.presence.lucidity).toBeLessThan(before);
   });
 });

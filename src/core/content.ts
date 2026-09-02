@@ -1,7 +1,7 @@
 import type { Scene } from './scene.js';
 import { EMOTIONS, BELIEFS } from './types.js';
-import type { Emotion, ObjectId, PersonId, Scalar, WorldState } from './types.js';
-import type { BelowSubject } from './below.js';
+import type { Belief, Emotion, ObjectId, PersonId, Scalar, WorldState } from './types.js';
+import type { BelowSubject, Tier } from './below.js';
 import type { Coda } from './coda.js';
 
 export interface PersonDef {
@@ -12,20 +12,16 @@ export interface PersonDef {
   present?: boolean;
 }
 
+/** Mechanics here; what it says is in `pack.below` under the same id. */
 export interface ObjectDef {
   id: ObjectId;
   /** How the presence refers to it once it knows what it is looking at. */
   name: string;
-  /** All you can tell before looking closely. Falls back to `name`. */
-  glimpse?: string;
-  /** Read when the player looks closely. This is where the death is told, obliquely. */
-  look: string;
   /**
-   * Taking it up, and letting it go, once per hold it has left — first use
-   * to last. A belonging is three holds and then cold forever, so this is
-   * where that gets *felt* rather than tracked: the warmth arrives smaller
-   * each time and leaves faster, and the last entry is the one that says it
-   * is over. Falls back to the generic pair when absent.
+   * Taking it up and letting it go, first hold to last. Three holds and then
+   * cold forever, felt in the prose rather than tracked: the warmth arrives
+   * smaller each time and the last entry says it is over. Falls back to a
+   * generic pair when absent.
    */
   hold?: string[];
   release?: string[];
@@ -39,19 +35,40 @@ export interface ObjectDef {
   discovered?: boolean;
 }
 
+/**
+ * The village, read back to the presence. Whatever it holds most of, said as
+ * something heard from the bottom. No effects: this is the arrow pointing the
+ * other way.
+ */
+export interface Readout {
+  beliefs: Record<Belief, string>;
+  /** Louder than a belief, so these get two bands: over the floor, then over 0.6. */
+  attention: [string, string];
+  dread: [string, string];
+}
+
 export interface ContentPack {
   people: PersonDef[];
   objects: ObjectDef[];
   scenes: Scene[];
   /** Starting values for the well itself. */
   well?: { attention?: Scalar; dread?: Scalar };
-  /** Lines for the empty turns between scenes. Waiting should still be a texture. */
+  /** Lines for the empty turns between scenes. Waiting is still a texture. */
   ambient?: string[];
+  /** Said instead of an ambient line when the village has become something. */
+  readout?: Readout;
+  /** Pulling the coat over yourself, and missing whoever came. */
+  hiding?: string[];
+  /**
+   * One of the five has become lookable. Generic — the line does not say which,
+   * only how clearly the presence is working — so it is keyed by tier.
+   */
+  noticing?: Record<Tier, string>;
   /** The endings. See `core/coda.ts`. */
   coda?: Coda;
   /** Beat zero's nine subjects, keyed by id. See `core/below.ts`. */
   below?: Record<string, BelowSubject>;
-  /** Beat zero's ten stub blocks. See `core/below.ts` / `BEAT_ZERO_PLAN.md` §5. */
+  /** Beat zero's transition blocks. See `core/below.ts`. */
   belowProse?: {
     opening: string[];
     toMovementII: string[];

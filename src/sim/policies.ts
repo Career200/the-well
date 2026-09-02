@@ -4,8 +4,8 @@ import { makeRng } from '../core/rng.js';
 import type { ContentPack } from '../core/content.js';
 
 /**
- * Stand-in players. Not AI — just enough of a hand on the controls to prove a
- * branch is reachable, and to show what each lever does to a village at scale.
+ * Stand-in players: enough of a hand on the controls to prove a branch is
+ * reachable and show what each lever does to a village at scale.
  */
 export type Policy = 'idle' | 'haunty' | 'resonant' | 'mixed';
 export const POLICIES: Policy[] = ['idle', 'haunty', 'resonant', 'mixed'];
@@ -19,19 +19,16 @@ export function choose(game: Game, pack: ContentPack, policy: Policy, roll: numb
   const buried = pack.objects.some((o) => !game.state.objects[o.id]?.found);
   const inScene = game.mode.kind === 'scene';
 
-  // Belongings have to be dug for now: the silt gives them up to pressing at
-  // nobody, which is otherwise a waste of the bar. Only the policies that
-  // intend to *use* one bother — and only out of spare charge, because a
-  // digger who empties the bar has nothing left for whoever arrives, which is
-  // the trade the mechanic exists to create.
+  // Belongings have to be dug for: the silt gives them up to pressing at
+  // nobody. Only policies that intend to use one bother, and only out of spare
+  // charge — emptying the bar leaves nothing for whoever arrives.
   const digs = policy === 'resonant' || policy === 'mixed';
   if (!inScene && buried && digs) {
     return game.state.presence.charge >= TUNING.pressCost * 2 ? { kind: 'haunt' } : { kind: 'still' };
   }
 
-  // Stances persist, so a stand-in player has to know when to stop. Nobody
-  // sensible keeps pushing at an empty rim; holding on is a real gamble, since
-  // the mood you set before they arrive is the mood they walk into.
+  // Stances persist, so a stand-in has to know when to stop. Nobody keeps
+  // pushing at an empty rim; holding on is a gamble on who arrives.
   const stance = game.state.presence.stance;
   if (!inScene) {
     if (stance.kind === 'pressing') return { kind: 'still' };
@@ -43,7 +40,7 @@ export function choose(game: Game, pack: ContentPack, policy: Policy, roll: numb
     return { kind: 'look', object: undiscovered[Math.floor(roll * 5) % undiscovered.length]!.id };
   }
 
-  // Pressing at nobody is only ever a waste of the bar, and the narration says so.
+  // Pressing at nobody wastes the bar, and the narration says so.
   const wantsHaunt = !inScene ? 0 : policy === 'haunty' ? 0.6 : policy === 'mixed' ? 0.3 : 0;
   const wantsAttune = policy === 'resonant' ? 0.5 : policy === 'mixed' ? 0.3 : 0;
 

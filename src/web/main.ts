@@ -22,10 +22,9 @@ const meters = el('meters');
 const debug = el<HTMLPreElement>('debug');
 
 /**
- * Everything there is down here, in reading order, three by three. The grid is
- * built once and never rebuilt — cells change state, the layout never moves,
- * and the player can see from the first frame that there are exactly nine
- * things and there will never be a tenth.
+ * Everything down here, in reading order, three by three. Built once and never
+ * rebuilt: cells change state, the layout never moves, so the player sees from
+ * the first frame that there are exactly nine things and never a tenth.
  */
 const CELLS: { id: string; label: string; belonging: boolean }[] = [
   { id: 'cold', label: 'the cold', belonging: false },
@@ -58,25 +57,22 @@ CELLS.forEach((cell, index) => {
   button.type = 'button';
   button.className = 'cell';
   // The name lives in a span so an unmet cell can hide it without collapsing:
-  // `visibility: hidden` keeps the box exactly the size it will be when the
-  // thing arrives, and keeps the word out of the accessibility tree until it
-  // is the player's to know.
+  // `visibility: hidden` keeps the box its final size and keeps the word out
+  // of the accessibility tree until it is the player's to know.
   const label = document.createElement('span');
   label.className = 'label';
   label.textContent = cell.label;
   button.append(label);
   button.onclick = () => onCell(cell);
-  // Which corner the thing calls from. Walked round rather than drawn at
-  // random — `rng.ts` reserves randomness for the simulation, no two
-  // neighbours call from the same side, and a belonging always calls from
-  // its own corner, which is a small tell of its own.
+  // Which corner the thing calls from. Walked round rather than random —
+  // randomness belongs to the simulation — so no two neighbours share a side
+  // and a belonging always calls from its own corner.
   const [dx, dy] = CORNERS[index % CORNERS.length]!;
   button.style.setProperty('--glow-dx', dx);
   button.style.setProperty('--glow-dy', dy);
-  // The arrival is a one-shot; the slow call underneath it takes over after.
-  // Belt and braces on the timer, because a tab that is not being looked at
-  // throttles its animations and `animationend` may never arrive — and a cell
-  // stuck mid-arrival would never start calling.
+  // The arrival is a one-shot; the slow call underneath takes over after. A
+  // backgrounded tab throttles animations and may never fire `animationend`,
+  // which would leave the cell stuck mid-arrival — hence the timer too.
   button.addEventListener('animationend', () => button.classList.remove('surfacing'));
   subjects.append(button);
   cells.set(cell.id, button);
@@ -86,42 +82,37 @@ const shaft = makeShaft(el('shaft'), fitLog, () => document.querySelector('foote
 
 /**
  * The words live between the coin of sky and the waterline. Both edges come
- * from the picture itself rather than from a margin somebody guessed, so
- * moving the geometry moves the text out of its way automatically.
+ * from the picture itself, so moving the geometry moves the text with it.
  *
  * Safe against feedback: `#log` is the flex child that absorbs slack, so
- * shrinking it leaves the header and footer exactly where they were.
+ * shrinking it leaves the header and footer where they were.
  */
 function fitLog({ skyBottom, waterTop }: Bands): void {
   const gap = 14;
   const header = document.querySelector('header')!.getBoundingClientRect().bottom;
   const footer = document.querySelector('footer')!.getBoundingClientRect().top;
   log.style.marginTop = `${Math.max(0, skyBottom + gap - header)}px`;
-  // Once it is over, the words take the whole shaft. There is nothing left to
-  // read the water for, and the ending needs the room more than the picture
-  // does — see `render`, which puts the controls away at the same moment.
+  // Once it is over the words take the whole shaft — nothing left to read the
+  // water for. `render` puts the controls away at the same moment.
   log.style.marginBottom =
     game.mode.kind === 'over' ? `${gap}px` : `${Math.max(0, footer - waterTop + gap)}px`;
 }
 
 /**
- * The world comes into view on a clock of its own, and the clock only starts
- * when the presence first pushes. Every line written after that brings it up a
- * little, so a player who does anything at all is guaranteed the whole picture
- * in short order — and a player who stays perfectly still the entire run sits
- * in the dark, which is the correct outcome for someone who never acted.
+ * The world comes into view on its own clock, which only starts on the first
+ * push; every line after that brings it up. A player who never acts sits in
+ * the dark, which is the correct outcome.
  */
 const REVEAL_LINES = 14;
 let revealed = 0;
 
 /**
- * Lines arrive one at a time even when a beat produced several: they are in
- * the document immediately, and the stagger is a delay on each entrance. A
- * beat should read as a thing unfolding, not as a paragraph appearing.
+ * Lines arrive one at a time even when a beat produced several: all are in the
+ * document immediately, and the stagger is a delay on each entrance, so a beat
+ * unfolds rather than appearing as a paragraph.
  *
- * The gap is the length of the line that came before it, because a flat tick
- * gives twenty-five words the same room as four — and a change of register is
- * a different voice starting, which needs a breath of its own on top.
+ * The gap scales with the previous line's length — a flat tick gives
+ * twenty-five words the same room as four — plus a breath for a new voice.
  */
 const STAGGER = {
   base: 110,
@@ -141,22 +132,20 @@ const gapAfter = (line: NarrationLine, next: NarrationLine): number =>
   );
 
 /**
- * There is no scrollback. The log holds the last `MAX_LINES` and the rest is
- * gone — the room is what you can see, and nothing down here is ever
- * recovered. What does not fit in the band is the player's loss, which is why
- * the count is generous enough to read a scene through.
+ * No scrollback: the log holds the last `MAX_LINES` and the rest is gone.
+ * Generous enough to read a scene through.
  */
 const MAX_LINES = 12;
 
-/** The register comes from the engine now — the client never guesses at it. */
+/** The register comes from the engine; the client never guesses at it. */
 function say(text: string, kind: LineKind | 'marker', delayMs = 0): void {
   const p = document.createElement('p');
   p.className = kind;
   p.textContent = text;
   if (delayMs > 0) p.style.animationDelay = `${Math.round(delayMs)}ms`;
   log.append(p);
-  // The ending outranks the cap. Older lines go to make room for it, but a
-  // coda line is never evicted by the one after it — the whole of it stays.
+  // The ending outranks the cap: older lines go, but a coda line is never
+  // evicted — the whole of it stays.
   while (log.childElementCount > MAX_LINES && !log.firstElementChild?.classList.contains('coda')) {
     log.firstElementChild?.remove();
   }
@@ -179,9 +168,8 @@ function act(action: PlayerAction): void {
     const stop: NarrationLine = { kind: 'system', text: 'nothing further will happen' };
     say(stop.text, stop.kind, last ? delay + gapAfter(last, stop) : 0);
   }
-  // Markers are always written, and CSS decides whether they are visible —
-  // so turning debug on shows the whole run's worth, not just what happened
-  // to land while the panel was open.
+  // Markers are always written and CSS decides visibility, so turning debug on
+  // shows the whole run's worth rather than only what landed while it was open.
   if (wasInScene && game.mode.kind !== 'scene') {
     const last = game.state.history.at(-1);
     if (last) say(`${last.scene} · ${last.outcome}`, 'marker');
@@ -192,14 +180,10 @@ function act(action: PlayerAction): void {
 const nameOf = (id: string): string => pack.objects.find((o) => o.id === id)?.name ?? id;
 
 /**
- * A cell comes online when its own line has been said — the room reaches you
- * one thing at a time. Before that, in beat zero, reaching for it is not a
- * refusal and not a dead control: you are not all there yet, so the only thing
- * you can do to a thing you cannot name is push at it, and pushing is what
- * turns the next one up. Nothing you click in the dark does nothing.
- *
- * Once the phase is over the presence has itself together, and a cell that
- * cannot be acted on says so by being disabled.
+ * A cell comes online when its own line has been said. Before that, in beat
+ * zero, clicking one pushes instead — nothing clicked in the dark does
+ * nothing, and pushing is what turns the next cell up. Once the phase is over
+ * a cell that cannot be acted on is disabled instead.
  */
 function onCell(cell: { id: string; belonging: boolean }): void {
   const button = cells.get(cell.id)!;
@@ -209,8 +193,16 @@ function onCell(cell: { id: string; belonging: boolean }): void {
     act(state.discovered ? { kind: 'attune', object: cell.id } : { kind: 'look', object: cell.id });
     return;
   }
+  if (!cell.belonging && open(cell.id)) {
+    pulse(button, 'acted', 500);
+    act({ kind: 'look', object: cell.id });
+    return;
+  }
   if (game.mode.kind === 'below') push(button);
 }
+
+/** An ambient subject the presence can turn to. One look, then it closes again. */
+const open = (id: string): boolean => game.state.flags[`subject.${id}.open`] === true;
 
 /** A one-shot class, with a timer behind it in case the tab is not watching. */
 function pulse(el: Element, cls: string, ms = 600): void {
@@ -223,9 +215,8 @@ function pulse(el: Element, cls: string, ms = 600): void {
 /**
  * Pushing, from wherever the player pushed from. If it lands, the push button
  * lights along with whatever was clicked — which is how a cell teaches that it
- * was a push all along. If there is nothing left to push with, the room and
- * the one thing that would fix it answer instead: the same lesson from the
- * other side, and the reason no dial has to be shown to teach it.
+ * was a push. If there is nothing left, the room and the still button answer
+ * instead: the same lesson from the other side, without showing a dial.
  */
 function push(source?: Element): void {
   const refused = game.state.presence.charge < TUNING.pressCost;
@@ -242,9 +233,9 @@ function push(source?: Element): void {
 }
 
 /**
- * Has this thing's own line been said yet? A belonging is on the world's own
- * record — the silt gave it up, in beat zero or later — while an ambient
- * subject only ever resolves inside the phase.
+ * Has this thing's own line been said yet? A belonging is on the world's
+ * record once the silt gives it up; an ambient subject only resolves inside
+ * the phase.
  */
 function surfaced(id: string): boolean {
   if (game.state.objects[id]) return game.state.objects[id]!.found;
@@ -256,13 +247,9 @@ let quiet = false;
 let forgetting: ReturnType<typeof setInterval> | undefined;
 
 /**
- * The one ending that goes on happening after it is told. The text arrives
- * already coming apart — the engine takes the letters, deterministically —
- * and then the dark takes the rest of it a line at a time while the player
- * watches, until there is nothing left up there but the sound of nothing.
- *
- * Bounded by construction: it stops when the coda is gone, and starting it
- * twice is a no-op.
+ * The one ending that goes on happening after it is told. The engine erodes
+ * the letters; this takes the remaining lines one at a time while the player
+ * watches. Bounded: it stops when the coda is gone, and re-entry is a no-op.
  */
 function forget(): void {
   if (forgetting) return;
@@ -275,21 +262,19 @@ function forget(): void {
     }
     left.remove();
     say(NOTHING_NEW, 'idle');
-    // Slow on purpose: the text has to be readable before it is taken, or the
-    // taking is not a loss, it is just a transition.
+    // Slow on purpose: unreadable text taken away is a transition, not a loss.
   }, 13000);
 }
 
 function render(): void {
   const inScene = game.mode.kind === 'scene';
-  // Clamped here rather than in the shaft: `revealed` goes on counting all
-  // run, so an unclamped value swallows any scaling applied to it below.
+  // Clamped here, not in the shaft: `revealed` counts all run, so an unclamped
+  // value would swallow the scaling applied below.
   const seen = game.state.flags[HAS_PRESSED] ? Math.min(1, revealed / REVEAL_LINES) : 0;
   el('shaft').classList.toggle('receding', game.mode.kind === 'over');
   shaft.update({
-    // Once it is over the picture goes back down. The words run the whole
-    // height of the shaft now, including across the water, and the ending is
-    // the thing that has to be readable — not the place it happened in.
+    // Once it is over the picture goes back down: the words run the whole
+    // shaft, and the ending is what has to be readable, not the place.
     visibility: game.mode.kind === 'over' ? seen * 0.28 : seen,
     occupied: inScene,
     charge: game.state.presence.charge,
@@ -301,9 +286,8 @@ function render(): void {
     `${water(game.state.presence.charge)}${inScene ? ' Somebody is at the rim.' : ''}`,
   );
 
-  // Cells are only ever restyled — never added, removed or reordered. A cell
-  // lights when its own line has been said; in the dark an unlit one is still
-  // live, and reaching for it pushes.
+  // Cells are only restyled, never added, removed or reordered. One lights
+  // when its own line has been said; in the dark an unlit one still pushes.
   const inBelow = game.mode.kind === 'below';
   if (game.mode.kind === 'below') for (const id of game.mode.phase.revealed) met.add(id);
   else for (const cell of CELLS) if (!cell.belonging) met.add(cell.id);
@@ -313,10 +297,8 @@ function render(): void {
     const lit = cell.belonging ? surfaced(cell.id) && !!game.state.objects[cell.id] : met.has(cell.id);
     button.classList.toggle('lit', lit);
 
-    // Only the belongings call. A thing that was yours announces itself once
-    // when it comes out of the silt and then goes on asking quietly for as
-    // long as it is unexamined; the cold and the walls and the sky do none of
-    // that, because they are not asking for anything. They are just there.
+    // Only belongings call: announced once out of the silt, then asking
+    // quietly while unexamined. The cold and the walls ask for nothing.
     if (cell.belonging && lit && !arrived.has(cell.id)) {
       arrived.add(cell.id);
       button.classList.add('surfacing');
@@ -328,9 +310,9 @@ function render(): void {
     );
 
     if (!cell.belonging) {
-      // Lookable subjects are not built yet — see NEXT_STEPS. In the dark the
-      // cell still answers, because everything there answers with a push.
-      button.disabled = !inBelow;
+      // In the dark the cell answers with a push. Afterwards it is dead stone
+      // until lucidity turns one of them up.
+      button.disabled = !inBelow && !open(cell.id);
       continue;
     }
 
@@ -343,7 +325,7 @@ function render(): void {
       continue;
     }
     // A belonging is a stance, not an item slot: clicking it is *hold this*,
-    // and it stays held until the player is still. Warmth is the border.
+    // held until the player is still. Warmth is the border.
     button.disabled = state.discovered && state.charge <= TUNING.spent;
     button.classList.toggle('unknown', !state.discovered);
     button.dataset['feel'] = state.discovered ? feelBand(state) : 'unknown';
@@ -367,16 +349,14 @@ function render(): void {
     meters.append(span);
   }
 
-  // A finished run puts its controls away. Keeping nine dead cells on screen
-  // says "there is still something to do here" for the whole length of the
-  // ending, and the ending needs that space more than the grid does.
+  // A finished run puts its controls away: nine dead cells would keep saying
+  // there is something to do, and the ending needs the space.
   const footer = document.querySelector('footer')!;
   footer.classList.toggle('gone', game.mode.kind === 'over');
   if (game.mode.kind === 'over') {
-    // The ending replaces the run. Everything that led here goes, so the coda
-    // gets the whole shaft and starts at the top of it — and the log is
-    // allowed to scroll again, because no-scrollback is a rule about the run
-    // and a long ending has to be readable to the end of itself.
+    // The ending replaces the run: everything that led here goes, so the coda
+    // gets the whole shaft. Scrolling comes back too — no-scrollback is a rule
+    // about the run, and a long ending has to be readable to its end.
     for (const line of [...log.children]) if (!line.classList.contains('coda')) line.remove();
     log.classList.add('ended');
     fitLog(shaft.bands());
@@ -386,20 +366,16 @@ function render(): void {
   }
 
   // Push is the one stance that can be unavailable, and it says so rather than
-  // letting the player spend a beat finding out. Stillness is never refused —
-  // and when it is the only move left it calls, in the same voice the
-  // belongings use, because a greyed-out button says what you cannot do and
-  // nothing at all about what you can.
-  // The two calls are deliberately different in kind: a belonging asks for you
-  // in warm light, and stillness only gathers the room's own cold behind
-  // itself — the same wash as the agitation over the whole screen, told small.
+  // costing a beat to find out. Stillness is never refused, and when it is the
+  // only move left it calls — a greyed-out button says nothing about what you
+  // *can* do. The two calls differ in kind: a belonging asks in warm light,
+  // stillness gathers the room's own cold behind itself.
   const spent = presence.charge < TUNING.pressCost;
   el<HTMLButtonElement>('haunt-btn').disabled = spent;
   el<HTMLButtonElement>('still-btn').classList.toggle('hinting', spent);
 
-  // The footer is a fixed size now, but the debug row still comes and goes, so
-  // the words are re-fitted to the water after every beat rather than only
-  // when the shaft is laid out.
+  // The debug row still comes and goes, so refit after every beat rather than
+  // only when the shaft is laid out.
   fitLog(shaft.bands());
 
   if (!debug.hidden) debug.textContent = dump();
@@ -438,10 +414,8 @@ for (const button of document.querySelectorAll<HTMLButtonElement>('[data-act]'))
 }
 
 /**
- * One switch for everything that is not the game: the state panel, the meters,
- * and the scene·outcome markers in the log. All three are instruments, none of
- * them is the well, and the player should be able to put all of them away with
- * one hand.
+ * One switch for everything that is not the game: state panel, meters, and the
+ * scene·outcome markers. All instruments; all put away together.
  */
 el('peek').onclick = () => {
   debug.hidden = !debug.hidden;

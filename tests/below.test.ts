@@ -12,7 +12,7 @@ describe('tierOf', () => {
   });
 
   it('is pinned to how many belongings were looked at', () => {
-    // One thing never found is one tier of the ending never reached.
+    // one thing never found is one tier of the ending never reached
     const after = (looks: number) => TUNING.lucidityFirstPress + looks * TUNING.lucidityPerDiscovery;
     expect(tierOf(after(4), false)).toBe('named');
     expect(tierOf(after(3), false)).toBe('plain');
@@ -42,8 +42,8 @@ describe('beat zero', () => {
   });
 
   it('the light does not cross for a presence that never opened its eyes', () => {
-    // Waiting it out is not a way through: there is no ending in the dark for
-    // someone who never began, so the run starves where it lies instead.
+    // Waiting it out is not a way through: no ending for someone who never
+    // began, so the run starves instead.
     let game = newGame(pack, 5, { below: true });
     for (let i = 0; i < BELOW_TUNING.cap - 1; i++) game = step(game, { kind: 'still' }).game;
     expect(game.mode.kind, 'left the dark without ever acting').toBe('below');
@@ -59,13 +59,13 @@ describe('beat zero', () => {
     }
     expect(woken.mode.kind).toBe('below');
     woken = step(woken, { kind: 'still' }).game;
-    expect(woken.mode.kind).toBe('idle');
+    // the way out is somebody arriving: the phase hands straight to them
+    expect(woken.mode.kind).toBe('scene');
   });
 
   it('uncovering what the silt gives up ends the phase without the cap', () => {
-    // The phase's soft ending is "the ambient five, and one belonging at
-    // plain" — reachable only if the player can look at what pressing turned
-    // up. It is a beat like any other: looking costs a turn.
+    // The soft ending is "the ambient five, and one belonging at plain" —
+    // reachable only by looking at what pressing turned up, at a turn each.
     for (const seed of [1, 3, 8, 42]) {
       let game = newGame(pack, seed, { below: true });
       let turns = 0;
@@ -79,7 +79,7 @@ describe('beat zero', () => {
         game = step(game, action).game;
         turns++;
       }
-      expect(game.mode.kind, `seed ${seed}`).toBe('idle');
+      expect(game.mode.kind, `seed ${seed}`).toBe('scene');
       expect(turns, `seed ${seed} should not need the cap`).toBeLessThan(BELOW_TUNING.cap);
     }
   });
@@ -114,8 +114,8 @@ describe('beat zero', () => {
       return said;
     };
 
-    // Never acts: the cold, the water and the walls press against you anyway.
-    // The sky and the silt are looked at, and nothing has looked yet.
+    // Never acts: the cold, the water and the walls press against you anyway,
+    // but the sky and the silt have to be looked at.
     const asleep = play(() => ({ kind: 'still' }));
     expect(asleep).toContain(veiled('walls'));
     expect(asleep).not.toContain(veiled('sky'));
@@ -128,8 +128,8 @@ describe('beat zero', () => {
   });
 
   it('never says the same thing twice', () => {
-    // The phase is short and linear enough that a repeated sentence reads as
-    // the machine showing through. Repetition is the run's tool, not this one's.
+    // Short and linear enough that a repeated sentence reads as the machine
+    // showing through. Repetition is the run's tool, not this one's.
     for (const seed of [1, 3, 8, 42]) {
       let game = newGame(pack, seed, { below: true });
       const said: string[] = [];
@@ -144,8 +144,7 @@ describe('beat zero', () => {
         const result = step(game, action);
         game = result.game;
         turns++;
-        // The ellipsis is the one thing allowed to repeat: it is what a turn
-        // says when everything it had was already said.
+        // the ellipsis is the one line allowed to repeat
         for (const line of result.lines) if (line.text !== NOTHING_NEW) said.push(line.text);
       }
       expect(said.length, `seed ${seed} said nothing`).toBeGreaterThan(8);
@@ -154,9 +153,8 @@ describe('beat zero', () => {
   });
 
   it('never narrates more than a turn can carry, and never drops what it held back', () => {
-    // Three clocks can come due at once down here. What the player caused is
-    // always said; the world's own lines wait — but they do not go away, and
-    // they keep the order they were written in.
+    // Three clocks can come due at once. What the player caused is always
+    // said; the world's own lines wait, but never go away or reorder.
     for (const seed of [1, 3, 8, 42]) {
       let game = newGame(pack, seed, { below: true });
       const said: string[] = [];
@@ -181,7 +179,17 @@ describe('beat zero', () => {
       const at = AMBIENT_ORDER.map((id) => said.indexOf(pack.below![id]!.veiled));
       expect(at.some((i) => i < 0), `seed ${seed} lost an ambient subject`).toBe(false);
       expect([...at].sort((a, b) => a - b), `seed ${seed} reordered the subjects`).toEqual(at);
-      expect(said, `seed ${seed} never crossed the light`).toContain(pack.belowProse!.lightCrossing[0]);
+      // The crossing is the run beginning: the phase hands off to whoever is
+      // at the rim, and their opening beat *is* the crossing.
+      expect(game.mode.kind, `seed ${seed} never crossed the light`).toBe('scene');
+      if (game.mode.kind !== 'scene') throw new Error('unreachable');
+      const opened = pack.scenes.find((s) => s.id === (game.mode as { scene: string }).scene)!;
+      expect(said[said.length - 1], `seed ${seed} did not open on the arrival`).toBe(
+        opened.beats[0]!.text(game.state, { pressure: 0, resonance: null, beatIndex: 0 }),
+      );
+      expect(said, `seed ${seed} announced the crossing as well as playing it`).not.toContain(
+        pack.belowProse!.lightCrossing[0],
+      );
     }
   });
 
@@ -195,8 +203,8 @@ describe('beat zero', () => {
 
     const c = newGame(pack, 7, { below: true });
     if (c.mode.kind !== 'below') throw new Error('unreachable');
-    // different seeds are not guaranteed to differ, but the pair itself must
-    // always be drawn from the real belongings, no more and no fewer than two.
+    // different seeds may match, but the pair must always be two real
+    // belongings, no more and no fewer
     for (const id of c.mode.phase.found) expect(pack.objects.some((o) => o.id === id)).toBe(true);
   });
 });

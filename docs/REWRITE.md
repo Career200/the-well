@@ -132,8 +132,8 @@ ledger of counters maintained alongside it:
 
 ```
 ledger['sit:the-dog-at-the-rim']                 → times.situation
-ledger['sit:x|cast:anselm,mira']                 → times.withCast
-ledger['sit:x|role:the-one=mira']                → times.withRole('the-one')
+ledger['sit:x|cast:anselm,anna']                 → times.withCast
+ledger['sit:x|role:the-one=anna']                → times.withRole('the-one')
 ```
 
 Three keys written on every resolution. This is the concrete piece of new state

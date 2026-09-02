@@ -1,22 +1,18 @@
 import type { ObjectDef } from '../core/content.js';
 
 /**
- * The belongings. Each `look` is a piece of the death, told sideways — the
- * player is never told they are dead, only handed the evidence.
+ * The belongings, as mechanics. What they say is in `content/below.ts` with
+ * the other subjects.
  *
- * `hold` and `release` run first use to last. Three holds is the whole of a
- * belonging, so the arc is written into the prose rather than left to a bar:
- * the warmth comes up smaller each time and goes out of it faster, and the
- * third pair is the one that closes it. Each thing cools in its own material —
- * brass, tin, cord, wool — because that is the only way the player can tell
- * them apart without a number.
+ * `hold` and `release` run first use to last — three holds is the whole of a
+ * belonging, so the arc is in the prose rather than a bar. Each cools in its
+ * own material (brass, tin, cord, wool), which is how they are told apart
+ * without a number.
  */
 export const objects: ObjectDef[] = [
   {
     id: 'ring',
     name: 'brass ring',
-    glimpse: 'a small brightness in the silt',
-    look: 'A ring, brass, green at the edges. It is on a finger. The finger is on a hand that is in the silt, palm up, and you know the shape of that hand better than you know your own name.',
     hold: [
       'The brass warms before you have properly taken hold of it, the way it used to warm in a pocket.',
       'It comes up warm again, but not as far, and you catch yourself waiting for the rest of it.',
@@ -28,14 +24,12 @@ export const objects: ObjectDef[] = [
       'It goes cold under your hand and stays that way. Whatever she gave back is spent, and it was only ever the once.',
     ],
     emotion: 'tenderness',
-    affinity: { mira: 1, tomas: 0.4 },
+    affinity: { anna: 1, tomas: 0.4 },
     power: 0.3,
   },
   {
     id: 'whistle',
     name: 'tin whistle',
-    glimpse: 'something with a hole in it',
-    look: 'A child’s tin whistle, flattened on one side where a boot came down. Somebody carried it a long way for someone who never got it.',
     hold: [
       'The tin is thin enough to warm all the way through, and it does, all at once.',
       'It warms unevenly now, along the flattened side and nowhere else.',
@@ -47,14 +41,12 @@ export const objects: ObjectDef[] = [
       'Cold, and light, and no different now from any other scrap of tin in the silt.',
     ],
     emotion: 'curiosity',
-    affinity: { boy: 1, mira: 0.3 },
+    affinity: { boy: 1, anna: 0.3 },
     power: 0.28,
   },
   {
     id: 'knife',
     name: 'short knife',
-    glimpse: 'a straight line where nothing should be straight',
-    look: 'A short knife, bedded in the silt to the hilt, as though it went in after you did. The handle is wrapped in cord. You have wrapped cord like that. Your hands knew how.',
     hold: [
       'The cord takes the warmth first. Your hands know the wrapping of it without being asked.',
       'The cord is warm and the blade is not, and the difference is wider than it was.',
@@ -72,8 +64,6 @@ export const objects: ObjectDef[] = [
   {
     id: 'coat',
     name: 'coat',
-    glimpse: 'a dark spread against the dark',
-    look: 'A coat, or the idea of one, spread and heavy with water. There is a tear at the shoulder that did not come from the fall. You keep expecting it to be cold, and it is not, and that is the wrong thing about it.',
     hold: [
       'The wool takes an age to warm and then holds it, spread out and heavy across a good deal of the dark.',
       'It warms in patches now, and none of them near the tear.',
@@ -85,7 +75,7 @@ export const objects: ObjectDef[] = [
       'It is cold through, and heavy, and it will not do that again.',
     ],
     emotion: 'grief',
-    affinity: { mira: 0.7, anselm: 0.5, tomas: 0.6 },
+    affinity: { anna: 0.7, anselm: 0.5, tomas: 0.6 },
     power: 0.3,
   },
 ];

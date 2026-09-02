@@ -108,6 +108,38 @@ export const scenes: Scene[] = [
       },
     ],
   },
+  {
+    // The witness scene. The only lever here is noise, and noise gets explained.
+    id: 'the-asking',
+    title: 'Anselm, at the rim',
+    cast: ['anselm', 'anna'],
+    weight: (s) => (s.history.length <= 2 ? 3 : 1),
+    beats: [
+      { text: () => 'Two of them at the rim in the middle of the day. Neither of them has brought a bucket.' },
+      { text: () => 'The woman is asking about something and keeps starting the same sentence over.' },
+      { text: () => 'The old man answers before she gets to the end of it, every time.' },
+    ],
+    outcomes: [
+      {
+        id: 'heard',
+        when: (_s, ctx) => ctx.pressure >= NOTICED,
+        text: () =>
+          'The water knocks against the stone and both of them stop. The old man leans over, looks, and tells her it is frost getting into the wall.',
+        effects: () => [
+          { kind: 'emotion', person: 'anna', emotion: 'curiosity', delta: 0.15 },
+          { kind: 'belief', belief: 'mystery', delta: 0.1 },
+          { kind: 'well', field: 'attention', delta: 0.05 },
+        ],
+      },
+      {
+        id: 'settled',
+        when: () => true,
+        text: () =>
+          'He finishes her sentence for her, twice, and then they go back down the track. He does most of the talking on the way.',
+        effects: () => [],
+      },
+    ],
+  },
 
   {
     id: 'tomas-alone',

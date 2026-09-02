@@ -6,12 +6,12 @@ import { resolveOutcome } from './scene.js';
 import type { Scene, SceneContext } from './scene.js';
 import { initWorld } from './content.js';
 import type { ContentPack, ObjectDef } from './content.js';
-import { advanceBelow, BELOW_TUNING, eyesOpen, fillSilence, lookBelow, startBelow, tierOf, unsaid } from './below.js';
+import { advanceBelow, AMBIENT_ORDER, BELOW_TUNING, eyesOpen, fillSilence, lookBelow, startBelow, tierOf, unsaid } from './below.js';
 import { erode, resolveCoda, verdictOf } from './coda.js';
 import type { CodaContext, Door } from './coda.js';
 import type { BelowEvent, BelowPhase } from './below.js';
 import { BELIEF_OF_EMOTION, BELIEFS } from './types.js';
-import type { NarrationLine, ObjectId, SceneId, Stance, WorldState } from './types.js';
+import type { Belief, NarrationLine, ObjectId, SceneId, Stance, WorldState } from './types.js';
 
 /**
  * Three stances and one glance. `still`/`haunt`/`attune` set a stance; `wait`
@@ -32,6 +32,48 @@ export const HAS_PRESSED = 'presence.has-pressed';
 
 /** Set by the first refusal, so the one that states the rule is only said once. */
 const HAS_BEEN_REFUSED = 'presence.has-been-refused';
+
+/** A press that found nothing; the next one cannot. And: the rule has landed once. */
+const SILT_REFUSED = 'silt.refused';
+const SILT_TAUGHT = 'silt.taught';
+
+/**
+ * The five ambient subjects, after beat zero. Knowing yourself better turns one
+ * of them — drawn at random — into something you can look at, but not while
+ * somebody is at the rim: it waits for a quiet turn. One look each, and then it
+ * is an ordinary wall again.
+ */
+const QUEUED = (id: string): string => `subject.${id}.queued`;
+const OPEN = (id: string): string => `subject.${id}.open`;
+const SPENT = (id: string): string => `subject.${id}.spent`;
+const isAmbient = (id: string): boolean => (AMBIENT_ORDER as readonly string[]).includes(id);
+
+/** Drawn when lucidity moves, in either direction. */
+function queueSubject(game: Game): Game {
+  const locked = AMBIENT_ORDER.filter(
+    (id) => !game.state.flags[QUEUED(id)] && !game.state.flags[OPEN(id)] && !game.state.flags[SPENT(id)],
+  );
+  const pick = locked[Math.floor(game.rng.next() * locked.length)];
+  if (!pick) return game;
+  return withState(game, applyEffects(game.state, [{ kind: 'flag', flag: QUEUED(pick), value: true }]));
+}
+
+/** Released on an empty turn, so it never lands on top of a scene. */
+function openSubject(game: Game): { game: Game; line: string } | undefined {
+  const next = AMBIENT_ORDER.find((id) => game.state.flags[QUEUED(id)]);
+  const said = game.pack.noticing?.[tierOf(game.state.presence.lucidity, false)];
+  if (!next || !said) return undefined;
+  return {
+    game: withState(
+      game,
+      applyEffects(game.state, [
+        { kind: 'flag', flag: QUEUED(next), value: false },
+        { kind: 'flag', flag: OPEN(next), value: true },
+      ]),
+    ),
+    line: said,
+  };
+}
 
 /**
  * Pushing with nothing left. Three variants so a run of refusals does not read
@@ -55,8 +97,9 @@ const idle = (text: string): NarrationLine => ({ kind: 'idle', text });
 const system = (text: string): NarrationLine => ({ kind: 'system', text });
 
 export type Mode =
-  /** `lastAmbient` so an empty turn never repeats itself. */
-  | { kind: 'idle'; lastAmbient?: string }
+  /** `lastAmbient` so an empty turn never repeats itself; `lastReadout` so the
+   *  village is only read back when it has changed. */
+  | { kind: 'idle'; lastAmbient?: string; lastReadout?: string }
   | { kind: 'scene'; scene: SceneId; ctx: SceneContext }
   /** Beat zero. See `core/below.ts`. Disposable once the deck exists. */
   | { kind: 'below'; phase: BelowPhase }
@@ -113,11 +156,8 @@ export const TUNING = {
   lucidityFirstPress: 0.02,
   /** Base chance per idle turn that someone comes to the well. */
   sceneChance: 0.35,
-  /**
-   * Chance a press into the empty dark turns up another belonging. Beat zero
-   * gives two; the rest cost presence that could have gone to the living.
-   */
-  siltChance: 0.45,
+  /** Chance a press into the empty dark turns up a belonging. */
+  siltChance: 0.4,
 };
 
 /**
@@ -200,6 +240,20 @@ function maybeStartScene(game: Game, opts?: { force?: boolean }): { game: Game; 
   if (!picked) return { game, lines: [] };
 
   const ctx: SceneContext = { pressure: 0, resonance: heldResonance(game), beatIndex: 0 };
+
+  // The coat is the one belonging that takes something away. Under it there is
+  // no scene: whoever came is missed, and the presence knows itself a little
+  // less for having chosen not to look. The scene itself is not spent.
+  if (ctx.resonance?.object === 'coat' && game.pack.hiding?.length) {
+    return {
+      game: withState(
+        game,
+        applyEffects(game.state, [{ kind: 'presence', field: 'lucidity', delta: -TUNING.lucidityPerDiscovery }]),
+      ),
+      lines: [fact(game.pack.hiding[game.state.turn % game.pack.hiding.length]!)],
+    };
+  }
+
   const next: Game = { ...game, mode: { kind: 'scene', scene: picked.id, ctx } };
   const first = picked.beats[0];
   return { game: next, lines: first ? [scene(first.text(next.state, ctx))] : [] };
@@ -213,6 +267,15 @@ function heldResonance(game: Game): SceneContext['resonance'] {
   if (!def) return null;
   return { object: def.id, emotion: def.emotion, strength: def.power * (game.state.objects[def.id]?.charge ?? 0) };
 }
+
+/** A subject at the tier the presence has reached. Belongings run one ahead. */
+function subjectAt(game: Game, id: string, isBelonging: boolean): string | undefined {
+  const subject = game.pack.below?.[id];
+  if (!subject) return undefined;
+  return subject[tierOf(game.state.presence.lucidity, isBelonging)];
+}
+
+const glimpseAt = (game: Game, def: ObjectDef): string => game.pack.below?.[def.id]?.glimpse ?? def.name;
 
 /**
  * Two doors: a road reaches its last step, or nobody came. Beat zero is exempt
@@ -241,6 +304,7 @@ export function step(game: Game, action: PlayerAction): StepResult {
   if (game.mode.kind === 'over') return { game, lines: [] };
 
   const before = runStatus(game).kind;
+  const lucidityBefore = game.state.presence.lucidity;
   const lines: NarrationLine[] = [];
   let next: Game = withState(game, { ...game.state, turn: game.state.turn + 1 });
 
@@ -266,6 +330,23 @@ export function step(game: Game, action: PlayerAction): StepResult {
       break;
     }
     case 'look': {
+      if (isAmbient(action.object)) {
+        if (next.state.flags[OPEN(action.object)] !== true) {
+          lines.push(fact('There is nothing to see there yet.'));
+          break;
+        }
+        // No lucidity: the tier is the count of belongings, and the coda says
+        // that count out loud. The cold cannot be allowed to move it.
+        lines.push(fact(subjectAt(next, action.object, false) ?? ''));
+        next = withState(
+          next,
+          applyEffects(next.state, [
+            { kind: 'flag', flag: OPEN(action.object), value: false },
+            { kind: 'flag', flag: SPENT(action.object), value: true },
+          ]),
+        );
+        break;
+      }
       const def = objectDef(next, action.object);
       if (!def || !next.state.objects[action.object]?.found) {
         lines.push(fact('There is nothing like that down here.'));
@@ -277,11 +358,9 @@ export function step(game: Game, action: PlayerAction): StepResult {
           lines.push(fact('There is nothing to see there yet.'));
           break;
         }
-        lines.push(fact(next.pack.below?.[def.id]?.plain ?? def.look));
         next = { ...next, mode: { kind: 'below', phase } };
-      } else {
-        lines.push(fact(def.look));
       }
+      lines.push(fact(subjectAt(next, def.id, true) ?? def.name));
       const wasNew = !next.state.objects[def.id]?.discovered;
       next = withState(
         next,
@@ -349,12 +428,34 @@ export function step(game: Game, action: PlayerAction): StepResult {
     const wasIdle = next.mode.kind === 'idle' ? next.mode : undefined;
     const started = maybeStartScene(next);
     let game = started.game;
-    if (started.lines.length === 0 && lines.length === 0) {
-      const said = ambient(next, wasIdle?.lastAmbient);
+    const woken = started.lines.length === 0 && lines.length === 0 ? openSubject(game) : undefined;
+    if (woken) {
+      game = woken.game;
+      lines.push(idle(woken.line));
+    } else if (started.lines.length === 0 && lines.length === 0) {
+      const heard = readout(game, wasIdle?.lastReadout);
+      const said = heard?.line ?? ambient(next, wasIdle?.lastAmbient);
       lines.push(idle(said));
-      if (game.mode.kind === 'idle') game = { ...game, mode: { kind: 'idle', lastAmbient: said } };
+      const lastAmbient = heard ? wasIdle?.lastAmbient : said;
+      const lastReadout = heard?.key ?? wasIdle?.lastReadout;
+      if (game.mode.kind === 'idle') {
+        game = {
+          ...game,
+          mode: {
+            kind: 'idle',
+            ...(lastAmbient ? { lastAmbient } : {}),
+            ...(lastReadout ? { lastReadout } : {}),
+          },
+        };
+      }
     }
     result = { game, lines: [...lines, ...started.lines] };
+  }
+
+  // 3b. Knowing yourself better — or worse, under the coat — puts one of the
+  //     five in the queue. It comes out on some later quiet turn.
+  if (result.game.mode.kind !== 'below' && result.game.state.presence.lucidity !== lucidityBefore) {
+    result = { ...result, game: queueSubject(result.game) };
   }
 
   // 4. And then, if nothing is left, the run says what it was.
@@ -444,15 +545,24 @@ function tick(game: Game, gathering: boolean): { game: Game; lines: NarrationLin
     // Pressing at nobody wastes the bar — except it is the only thing that
     // shakes loose what beat zero left in the silt.
     const buried = next.pack.objects.find((o) => !next.state.objects[o.id]?.found);
-    if (buried && next.rng.next() < TUNING.siltChance) {
+    const owed = !next.state.flags[SILT_TAUGHT] || next.state.flags[SILT_REFUSED] === true;
+    if (buried && (owed || next.rng.next() < TUNING.siltChance)) {
       return {
-        game: withState(next, applyEffects(next.state, [{ kind: 'object', object: buried.id, field: 'found', value: true }])),
+        game: withState(
+          next,
+          applyEffects(next.state, [
+            { kind: 'object', object: buried.id, field: 'found', value: true },
+            { kind: 'flag', flag: SILT_TAUGHT, value: true },
+            { kind: 'flag', flag: SILT_REFUSED, value: false },
+          ]),
+        ),
         lines: [
           fact('You push against nothing at all, and the silt gives something back.'),
-          fact(next.pack.below?.[buried.id]?.glimpse ?? buried.glimpse ?? buried.name),
+          fact(glimpseAt(next, buried)),
         ],
       };
     }
+    if (buried) next = withState(next, applyEffects(next.state, [{ kind: 'flag', flag: SILT_REFUSED, value: true }]));
     return { game: next, lines: [fact('You push against nothing at all. The dark takes it without comment.')] };
   }
 
@@ -496,6 +606,7 @@ function advanceBelowMode(
     presenceCharge: game.state.presence.charge,
     pressedThisTurn: input.pressedThisTurn,
     exhaustedThisTurn: input.exhaustedThisTurn,
+    siltRolled: game.rng.next() < TUNING.siltChance,
   });
 
   let next: Game = { ...game, mode: { kind: 'below', phase } };
@@ -518,7 +629,13 @@ function advanceBelowMode(
     } else if (event.kind === 'glimpse') {
       // The point of the press that found it, so it never waits.
       now.push(...belowEventLines(next, event));
-      next = withState(next, applyEffects(next.state, [{ kind: 'object', object: event.object, field: 'found', value: true }]));
+      next = withState(
+        next,
+        applyEffects(next.state, [
+          { kind: 'object', object: event.object, field: 'found', value: true },
+          { kind: 'flag', flag: SILT_TAUGHT, value: true },
+        ]),
+      );
     } else {
       later.push(...belowEventLines(next, event));
     }
@@ -577,18 +694,17 @@ function advanceBelowMode(
 }
 
 function belowEventLines(game: Game, event: BelowEvent): NarrationLine[] {
-  const subjects = game.pack.below ?? {};
   const prose = game.pack.belowProse;
   switch (event.kind) {
-    case 'ambient':
-      return subjects[event.subject] ? [fact(subjects[event.subject]!.veiled)] : [];
+    case 'ambient': {
+      const said = subjectAt(game, event.subject, false);
+      return said ? [fact(said)] : [];
+    }
     case 'movement':
       return ((event.to === 2 ? prose?.toMovementII : event.to === 3 ? prose?.toMovementIII : undefined) ?? []).map(fact);
     case 'glimpse': {
-      const subject = subjects[event.object];
-      if (subject?.glimpse) return [fact(subject.glimpse)];
       const def = objectDef(game, event.object);
-      return def ? [fact(def.glimpse ?? def.name)] : [];
+      return def ? [fact(glimpseAt(game, def))] : [];
     }
     case 'end':
       return (prose?.lightCrossing ?? []).map(fact);
@@ -653,6 +769,35 @@ function resonanceEffects(game: Game, scene: Scene, ctx: SceneContext): Effect[]
  * An empty turn's texture. Never the same line twice running: the pool is
  * small, and back-to-back repeats read as the machine going round.
  */
+/** A quality has to be this loud before the village has anything to say. */
+const READOUT_FLOOR = 0.3;
+/** The well's own two dials go further than a belief does, so they get a second band. */
+const READOUT_LOUD = 0.6;
+
+/**
+ * The village, said back. Loudest quality wins, and only when it is not the one
+ * said last: repeated every turn it would be weather instead of news.
+ */
+function readout(game: Game, avoid?: string): { key: string; line: string } | undefined {
+  const lines = game.pack.readout;
+  if (!lines) return undefined;
+  const { beliefs, well } = game.state;
+  // A dial this far up outranks any opinion: what the well has become is
+  // louder than what is being said about it.
+  const dials: [string, number][] = [['attention', well.attention], ['dread', well.dread]];
+  const loud = dials.filter(([, v]) => v > READOUT_LOUD).sort((a, b) => b[1] - a[1])[0];
+  const ranked: [string, number][] = [...Object.entries(beliefs), ...dials];
+  const [name, value] = loud ?? ranked.sort((a, b) => b[1] - a[1])[0]!;
+  if (value <= READOUT_FLOOR) return undefined;
+
+  const dial = name === 'attention' || name === 'dread';
+  const band = dial && value > READOUT_LOUD ? 1 : 0;
+  const key = dial ? `${name}.${band}` : name;
+  if (key === avoid) return undefined;
+  const line = dial ? lines[name as 'attention' | 'dread'][band] : lines.beliefs[name as Belief];
+  return line ? { key, line } : undefined;
+}
+
 function ambient(game: Game, avoid?: string): string {
   const all = game.pack.ambient ?? ['Nothing. The stone sweats. Somewhere above, the light moves a hand-width.'];
   const pool = all.length > 1 ? all.filter((line) => line !== avoid) : all;

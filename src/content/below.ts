@@ -51,7 +51,7 @@ export const belowSubjects: Record<string, BelowSubject> = {
   ring: {
     id: 'ring',
     glimpse: 'a small brightness in the silt',
-    veiled: 'AA hard pinch of metal on a pale shape. The edges are crusted green.',
+    veiled: 'A hard pinch of metal on a pale shape. The edges are crusted green.',
     plain: 'A brass ring, turning green in the damp. It is stuck on a finger, resting on a clenched fist.',
     named:
       'Your ring. She gave it back to you by the gate, and you kept it in your waistcoat pocket until the air went out. Your last thought was of it.',

@@ -388,3 +388,69 @@ describe('content sanity', () => {
     }
   });
 });
+
+describe('the village, said back', () => {
+  const idle = (game: Game): Game => ({ ...game, mode: { kind: 'idle' } });
+  const lines = new Set([
+    ...Object.values(pack.readout!.beliefs),
+    ...pack.readout!.attention,
+    ...pack.readout!.dread,
+  ]);
+
+  it('says nothing about a village that has not decided anything', () => {
+    let game = idle(newGame(pack, 5));
+    for (let i = 0; i < 20; i++) {
+      const { game: next, lines: said } = step(game, { kind: 'wait' });
+      game = next;
+      expect(said.filter((l) => lines.has(l.text))).toEqual([]);
+    }
+  });
+
+  it('reads the loudest quality once, not every turn', () => {
+    let game = idle(newGame(pack, 5));
+    game = { ...game, state: applyEffects(game.state, [{ kind: 'belief', belief: 'tragedy', delta: 0.5 }]) };
+    // Said when it is news, and after a scene it is news again — but never on
+    // two turns running, or it stops being a reading and becomes weather.
+    let heard = 0;
+    let last = false;
+    for (let i = 0; i < 20; i++) {
+      const { game: next, lines: said } = step(game, { kind: 'wait' });
+      game = next;
+      const now = said.some((l) => l.text === pack.readout!.beliefs.tragedy);
+      expect(now && last).toBe(false);
+      last = now;
+      if (now) heard++;
+    }
+    expect(heard).toBeGreaterThan(0);
+  });
+});
+
+describe('hiding under the coat', () => {
+  it('misses whoever came, and costs a discovery', () => {
+    const start = found(newGame(pack, 3), 'coat');
+    let game: Game = {
+      ...start,
+      mode: { kind: 'idle' },
+      state: {
+        ...start.state,
+        presence: { ...start.state.presence, lucidity: 0.6 },
+        objects: { ...start.state.objects, coat: { ...start.state.objects['coat']!, discovered: true } },
+      },
+    };
+    game = play(game, [{ kind: 'attune', object: 'coat' }]);
+    const before = game.state.presence.lucidity;
+
+    // Only while there is coat left to hide under: three holds and it is cold,
+    // the stance drops, and the well is open to whoever comes next.
+    let hidden = 0;
+    for (let i = 0; i < 6; i++) {
+      const { game: next, lines } = step(game, { kind: 'wait' });
+      game = next;
+      if (!lines.some((l) => pack.hiding!.includes(l.text))) continue;
+      hidden++;
+      expect(game.mode.kind).not.toBe('scene');
+    }
+    expect(hidden).toBeGreaterThan(0);
+    expect(game.state.presence.lucidity).toBeLessThan(before);
+  });
+});

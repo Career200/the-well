@@ -47,6 +47,8 @@ export interface BelowPhase {
   /** The two belongings reachable this run, drawn once at phase start. */
   found: [ObjectId, ObjectId];
   seen: Partial<Record<ObjectId, 'glimpse' | 'plain'>>;
+  /** The silt owes one. */
+  owed: boolean;
   wasLow: boolean;
   exhausted: boolean;
   /** Consecutive turns that narrated nothing. See `BELOW_TUNING.quietRun`. */
@@ -104,6 +106,7 @@ export function startBelow(pick: () => number, belongingIds: readonly ObjectId[]
     revealed: [],
     found: [pool[0]!, pool[1]!],
     seen: {},
+    owed: true,
     wasLow: false,
     exhausted: false,
     quiet: 0,
@@ -155,6 +158,8 @@ export interface BelowInput {
   presenceCharge: number;
   pressedThisTurn: boolean;
   exhaustedThisTurn: boolean;
+  /** The engine's dice, so the phase stays pure. */
+  siltRolled: boolean;
 }
 
 /**
@@ -193,12 +198,14 @@ export function advanceBelow(phase: BelowPhase, input: BelowInput): { phase: Bel
     events.push({ kind: 'movement', to: 3 });
   }
 
-  // III. Pressing disturbs the silt and gives up one belonging at a time.
-  if (next.movement === 3 && input.pressedThisTurn) {
-    const target = next.found.find((id) => !next.seen[id]);
-    if (target) {
-      next = { ...next, seen: { ...next.seen, [target]: 'glimpse' } };
+  // One on the second press, then the same debt the idle game runs.
+  const target = input.pressedThisTurn && next.pressCount >= 2 ? next.found.find((id) => !next.seen[id]) : undefined;
+  if (target) {
+    if (next.owed || input.siltRolled) {
+      next = { ...next, owed: false, seen: { ...next.seen, [target]: 'glimpse' } };
       events.push({ kind: 'glimpse', object: target });
+    } else {
+      next = { ...next, owed: true };
     }
   }
 

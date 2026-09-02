@@ -193,8 +193,16 @@ function onCell(cell: { id: string; belonging: boolean }): void {
     act(state.discovered ? { kind: 'attune', object: cell.id } : { kind: 'look', object: cell.id });
     return;
   }
+  if (!cell.belonging && open(cell.id)) {
+    pulse(button, 'acted', 500);
+    act({ kind: 'look', object: cell.id });
+    return;
+  }
   if (game.mode.kind === 'below') push(button);
 }
+
+/** An ambient subject the presence can turn to. One look, then it closes again. */
+const open = (id: string): boolean => game.state.flags[`subject.${id}.open`] === true;
 
 /** A one-shot class, with a timer behind it in case the tab is not watching. */
 function pulse(el: Element, cls: string, ms = 600): void {
@@ -302,9 +310,9 @@ function render(): void {
     );
 
     if (!cell.belonging) {
-      // Lookable subjects are not built yet (see NEXT_STEPS). In the dark the
-      // cell still answers, with a push.
-      button.disabled = !inBelow;
+      // In the dark the cell answers with a push. Afterwards it is dead stone
+      // until lucidity turns one of them up.
+      button.disabled = !inBelow && !open(cell.id);
       continue;
     }
 

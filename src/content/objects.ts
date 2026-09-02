@@ -1,8 +1,8 @@
 import type { ObjectDef } from '../core/content.js';
 
 /**
- * The belongings. Each `look` is a piece of the death told sideways: the
- * player is handed evidence, never told.
+ * The belongings, as mechanics. What they say is in `content/below.ts` with
+ * the other subjects.
  *
  * `hold` and `release` run first use to last — three holds is the whole of a
  * belonging, so the arc is in the prose rather than a bar. Each cools in its
@@ -13,8 +13,6 @@ export const objects: ObjectDef[] = [
   {
     id: 'ring',
     name: 'brass ring',
-    glimpse: 'a small brightness in the silt',
-    look: 'A ring, brass, green at the edges. It is on a finger. The finger is on a hand that is in the silt, palm up, and you know the shape of that hand better than you know your own name.',
     hold: [
       'The brass warms before you have properly taken hold of it, the way it used to warm in a pocket.',
       'It comes up warm again, but not as far, and you catch yourself waiting for the rest of it.',
@@ -32,8 +30,6 @@ export const objects: ObjectDef[] = [
   {
     id: 'whistle',
     name: 'tin whistle',
-    glimpse: 'something with a hole in it',
-    look: 'A child’s tin whistle, flattened on one side where a boot came down. Somebody carried it a long way for someone who never got it.',
     hold: [
       'The tin is thin enough to warm all the way through, and it does, all at once.',
       'It warms unevenly now, along the flattened side and nowhere else.',
@@ -51,8 +47,6 @@ export const objects: ObjectDef[] = [
   {
     id: 'knife',
     name: 'short knife',
-    glimpse: 'a straight line where nothing should be straight',
-    look: 'A short knife, bedded in the silt to the hilt, as though it went in after you did. The handle is wrapped in cord. You have wrapped cord like that. Your hands knew how.',
     hold: [
       'The cord takes the warmth first. Your hands know the wrapping of it without being asked.',
       'The cord is warm and the blade is not, and the difference is wider than it was.',
@@ -70,8 +64,6 @@ export const objects: ObjectDef[] = [
   {
     id: 'coat',
     name: 'coat',
-    glimpse: 'a dark spread against the dark',
-    look: 'A coat, or the idea of one, spread and heavy with water. There is a tear at the shoulder that did not come from the fall. You keep expecting it to be cold, and it is not, and that is the wrong thing about it.',
     hold: [
       'The wool takes an age to warm and then holds it, spread out and heavy across a good deal of the dark.',
       'It warms in patches now, and none of them near the tear.',

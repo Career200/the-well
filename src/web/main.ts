@@ -6,6 +6,9 @@ import { BELIEFS, EMOTIONS } from '../core/types.js';
 import type { LineKind, NarrationLine } from '../core/types.js';
 import { makeShaft } from './visuals.js';
 import type { Bands } from './visuals.js';
+import { initAnalytics } from './analytics.js';
+
+initAnalytics();
 
 const seed = Number(new URLSearchParams(location.search).get('seed') ?? Math.floor(Math.random() * 1e5));
 let game: Game = newGame(pack, seed, { below: true });

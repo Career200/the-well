@@ -9,7 +9,7 @@ import type { ContentPack, ObjectDef } from './content.js';
 import { advanceBelow, AMBIENT_ORDER, BELOW_TUNING, eyesOpen, fillSilence, lookBelow, startBelow, tierOf, unsaid } from './below.js';
 import { erode, resolveCoda, verdictOf } from './coda.js';
 import type { CodaContext, Door } from './coda.js';
-import type { BelowEvent, BelowPhase } from './below.js';
+import type { BelowEvent, BelowPhase, Tier } from './below.js';
 import { BELIEF_OF_EMOTION, BELIEFS } from './types.js';
 import type { Belief, NarrationLine, ObjectId, SceneId, Stance, WorldState } from './types.js';
 
@@ -40,18 +40,35 @@ const SILT_TAUGHT = 'silt.taught';
 /**
  * The five ambient subjects, after beat zero. Knowing yourself better turns one
  * of them — drawn at random — into something you can look at, but not while
- * somebody is at the rim: it waits for a quiet turn. One look each, and then it
- * is an ordinary wall again.
+ * somebody is at the rim: it waits for a quiet turn.
+ *
+ * Not one-shot. A place is closed only against what it has already said: the
+ * tier is what a place speaks for, so when lucidity moves, everything that has
+ * not yet answered at the new tier is a candidate again, and the same wall
+ * says something else later.
  */
 const QUEUED = (id: string): string => `subject.${id}.queued`;
 const OPEN = (id: string): string => `subject.${id}.open`;
-const SPENT = (id: string): string => `subject.${id}.spent`;
+const SEEN = (id: string, tier: Tier): string => `subject.${id}.seen.${tier}`;
 const isAmbient = (id: string): boolean => (AMBIENT_ORDER as readonly string[]).includes(id);
+
+/** The tier the ambient five answer at. Belongings run one ahead; these do not. */
+const ambientTier = (game: Game): Tier => tierOf(game.state.presence.lucidity, false);
+
+/** Has this place already said what it has to say at the tier it is on now? */
+const answered = (game: Game, id: string): boolean => game.state.flags[SEEN(id, ambientTier(game))] === true;
+
+/**
+ * The cold is not a place. It has no region in the shaft and nothing to tap,
+ * so opening it would spend a step of lucidity on something the player cannot
+ * reach. It comes back when it has somewhere to be.
+ */
+const ASKABLE = AMBIENT_ORDER.filter((id) => id !== 'cold');
 
 /** Drawn when lucidity moves, in either direction. */
 function queueSubject(game: Game): Game {
-  const locked = AMBIENT_ORDER.filter(
-    (id) => !game.state.flags[QUEUED(id)] && !game.state.flags[OPEN(id)] && !game.state.flags[SPENT(id)],
+  const locked = ASKABLE.filter(
+    (id) => !game.state.flags[QUEUED(id)] && !game.state.flags[OPEN(id)] && !answered(game, id),
   );
   const pick = locked[Math.floor(game.rng.next() * locked.length)];
   if (!pick) return game;
@@ -93,6 +110,15 @@ export const NOTHING_NEW = '…';
 
 const scene = (text: string): NarrationLine => ({ kind: 'scene', text });
 const fact = (text: string): NarrationLine => ({ kind: 'fact', text });
+/**
+ * A `fact` one of the nine subjects is speaking, captioned with which. Only
+ * the thing's own prose goes through here — a refusal is the presence talking
+ * about the thing, not the thing, and stays headless.
+ */
+const spoken = (game: Game, id: string | undefined, text: string): NarrationLine => {
+  const subject = id === undefined ? undefined : subjectName(game, id);
+  return subject && id !== undefined ? { kind: 'fact', text, subject, subjectId: id } : fact(text);
+};
 const idle = (text: string): NarrationLine => ({ kind: 'idle', text });
 const system = (text: string): NarrationLine => ({ kind: 'system', text });
 
@@ -168,12 +194,16 @@ const usesSpent = (charge: number): number =>
   Math.min(3, Math.max(0, Math.round((1 - charge) / TUNING.holdCost)));
 
 /** Putting a thing down, in the words of the hold that just ended. */
-function letGoOf(game: Game, stance: Stance): string {
+function letGoOf(game: Game, stance: Stance): NarrationLine {
   const generic = 'You let it go. The cold comes back in around the shape of it.';
-  if (stance.kind !== 'holding') return generic;
+  if (stance.kind !== 'holding') return fact(generic);
   const def = objectDef(game, stance.object);
   const charge = game.state.objects[stance.object]?.charge ?? 0;
-  return def?.release?.[Math.min(2, Math.max(0, usesSpent(charge) - 1))] ?? generic;
+  return spoken(
+    game,
+    stance.object,
+    def?.release?.[Math.min(2, Math.max(0, usesSpent(charge) - 1))] ?? generic,
+  );
 }
 
 /**
@@ -268,6 +298,16 @@ function heldResonance(game: Game): SceneContext['resonance'] {
   return { object: def.id, emotion: def.emotion, strength: def.power * (game.state.objects[def.id]?.charge ?? 0) };
 }
 
+/**
+ * What to caption one of the nine with. A belonging answers with its own name
+ * so the word on the control and the word over the line can never disagree;
+ * a place answers out of the pack.
+ */
+function subjectName(game: Game, id: string): string | undefined {
+  const name = objectDef(game, id)?.name ?? game.pack.below?.[id]?.name;
+  return name ? `the ${name}` : undefined;
+}
+
 /** A subject at the tier the presence has reached. Belongings run one ahead. */
 function subjectAt(game: Game, id: string, isBelonging: boolean): string | undefined {
   const subject = game.pack.below?.[id];
@@ -323,7 +363,7 @@ export function step(game: Game, action: PlayerAction): StepResult {
       if (next.state.presence.stance.kind === 'still') {
         // Going on being still is the default, and says nothing.
       } else {
-        lines.push(fact(letGoOf(next, next.state.presence.stance)));
+        lines.push(letGoOf(next, next.state.presence.stance));
         next = setStance(next, { kind: 'still' });
         if (next.mode.kind === 'scene') next.mode = { ...next.mode, ctx: { ...next.mode.ctx, resonance: null } };
       }
@@ -331,18 +371,26 @@ export function step(game: Game, action: PlayerAction): StepResult {
     }
     case 'look': {
       if (isAmbient(action.object)) {
-        if (next.state.flags[OPEN(action.object)] !== true) {
-          lines.push(fact('There is nothing to see there yet.'));
+        // Not while somebody is at the rim. Missing a place happens because a
+        // scene held you, never because a timer ran out.
+        if (next.mode.kind === 'scene') {
+          lines.push(fact('Not now. There is somebody up there.'));
           break;
         }
-        // No lucidity: the tier is the count of belongings, and the coda says
-        // that count out loud. The cold cannot be allowed to move it.
-        lines.push(fact(subjectAt(next, action.object, false) ?? ''));
+        if (next.state.flags[OPEN(action.object)] !== true) {
+          // Asking a place with nothing to say still costs the turn. The room
+          // does not explain itself; it simply has nothing.
+          lines.push(idle(NOTHING_NEW));
+          break;
+        }
+        // No lucidity is spent here: the tier is the count of belongings, and
+        // the coda says that count out loud. The cold cannot move it.
+        lines.push(spoken(next, action.object, subjectAt(next, action.object, false) ?? ''));
         next = withState(
           next,
           applyEffects(next.state, [
             { kind: 'flag', flag: OPEN(action.object), value: false },
-            { kind: 'flag', flag: SPENT(action.object), value: true },
+            { kind: 'flag', flag: SEEN(action.object, ambientTier(next)), value: true },
           ]),
         );
         break;
@@ -360,7 +408,7 @@ export function step(game: Game, action: PlayerAction): StepResult {
         }
         next = { ...next, mode: { kind: 'below', phase } };
       }
-      lines.push(fact(subjectAt(next, def.id, true) ?? def.name));
+      lines.push(spoken(next, def.id, subjectAt(next, def.id, true) ?? def.name));
       const wasNew = !next.state.objects[def.id]?.discovered;
       next = withState(
         next,
@@ -389,7 +437,9 @@ export function step(game: Game, action: PlayerAction): StepResult {
       if (next.state.presence.stance.kind === 'holding' && next.state.presence.stance.object === def.id) break;
       next = setStance(next, { kind: 'holding', object: def.id });
       lines.push(
-        fact(
+        spoken(
+          next,
+          def.id,
           def.hold?.[Math.min(2, usesSpent(obj.charge))] ??
             `You gather yourself around the ${def.name}. It remembers more than you do.`,
         ),
@@ -574,7 +624,11 @@ function tick(game: Game, gathering: boolean): { game: Game; lines: NarrationLin
     return {
       game: setStance(game, { kind: 'still' }),
       lines: [
-        fact(def?.release?.[2] ?? 'It goes cold in your hands, and stays cold. There was only ever so much of it.'),
+        spoken(
+          game,
+          def?.id,
+          def?.release?.[2] ?? 'It goes cold in your hands, and stays cold. There was only ever so much of it.',
+        ),
       ],
     };
   }
@@ -626,6 +680,10 @@ function advanceBelowMode(
     if (event.kind === 'end') {
       ended = true;
       crossing = belowEventLines(next, event);
+    } else if (event.kind === 'ambient' && event.caused) {
+      // The floor, answering the press that just took something out of it. It
+      // goes ahead of the glimpse: the place first, then the thing in it.
+      now.push(...belowEventLines(next, event));
     } else if (event.kind === 'glimpse') {
       // The point of the press that found it, so it never waits.
       now.push(...belowEventLines(next, event));
@@ -698,7 +756,7 @@ function belowEventLines(game: Game, event: BelowEvent): NarrationLine[] {
   switch (event.kind) {
     case 'ambient': {
       const said = subjectAt(game, event.subject, false);
-      return said ? [fact(said)] : [];
+      return said ? [spoken(game, event.subject, said)] : [];
     }
     case 'movement':
       return ((event.to === 2 ? prose?.toMovementII : event.to === 3 ? prose?.toMovementIII : undefined) ?? []).map(fact);

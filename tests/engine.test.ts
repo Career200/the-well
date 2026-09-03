@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { couldStillFire, HAS_PRESSED, newGame, runStatus, step, TUNING } from '../src/core/engine.js';
+import { couldStillFire, HAS_PRESSED, newGame, NOTHING_NEW, runStatus, step, TUNING } from '../src/core/engine.js';
 import { resolveCoda, verdictOf } from '../src/core/coda.js';
 import type { Game, PlayerAction } from '../src/core/engine.js';
 import { pack } from '../src/content/index.js';
@@ -170,6 +170,74 @@ describe('belongings', () => {
       state: { ...fresh.state, objects: { ...fresh.state.objects, ring: { ...ring, found: true, discovered: true, charge: 0 } } },
     };
     expect(step(spent, { kind: 'attune', object: 'ring' }).lines[0]!.text).toMatch(/not coming back/);
+  });
+});
+
+/** A place with something to say. The engine owns the flag; the picture reads it. */
+const opened = (game: Game, id: string): Game => ({
+  ...game,
+  state: applyEffects(game.state, [{ kind: 'flag', flag: `subject.${id}.open`, value: true }]),
+});
+
+const lucid = (game: Game, lucidity: number): Game => ({
+  ...game,
+  state: { ...game.state, presence: { ...game.state.presence, lucidity } },
+});
+
+describe('the places', () => {
+  it('a place with nothing to say still costs the turn', () => {
+    const game = newGame(pack, 7);
+    const result = step(game, { kind: 'look', object: 'walls' });
+    expect(result.lines[0]).toEqual({ kind: 'idle', text: NOTHING_NEW });
+    expect(result.game.state.turn).toBe(game.state.turn + 1);
+  });
+
+  it('an open place answers at the tier the presence is on, and closes', () => {
+    const game = opened(newGame(pack, 7), 'walls');
+    const result = step(game, { kind: 'look', object: 'walls' });
+    expect(result.lines[0]!.text).toBe(pack.below!.walls!.veiled);
+    expect(result.game.state.flags['subject.walls.open']).toBe(false);
+    expect(result.game.state.flags['subject.walls.seen.veiled']).toBe(true);
+  });
+
+  it('the same place answers differently once lucidity has moved', () => {
+    const first = step(opened(newGame(pack, 7), 'walls'), { kind: 'look', object: 'walls' }).game;
+    expect(first.state.flags['subject.walls.seen.plain']).toBeUndefined();
+
+    // Two belongings' worth of knowing yourself: the walls have not spoken at
+    // this tier, so they are a candidate again and they say something else.
+    const later = step(opened(lucid(first, 0.6), 'walls'), { kind: 'look', object: 'walls' });
+    expect(later.lines[0]!.text).toBe(pack.below!.walls!.plain);
+    expect(later.game.state.flags['subject.walls.seen.plain']).toBe(true);
+  });
+
+  it('the named tier is reachable', () => {
+    const game = opened(lucid(newGame(pack, 7), 0.8), 'silt');
+    expect(step(game, { kind: 'look', object: 'silt' }).lines[0]!.text).toBe(pack.below!.silt!.named);
+  });
+
+  it('a place cannot be asked while somebody is at the rim', () => {
+    const idle = opened(newGame(pack, 7), 'sky');
+    const inScene: Game = {
+      ...idle,
+      mode: { kind: 'scene', scene: scenes[0]!.id, ctx: { pressure: 0, resonance: null, beatIndex: 0 } },
+    };
+    const result = step(inScene, { kind: 'look', object: 'sky' });
+    expect(result.lines[0]!.text).toMatch(/somebody up there/);
+    // Held, not spent: the scene is why you missed it, so it is still there.
+    expect(result.game.state.flags['subject.sky.open']).toBe(true);
+  });
+
+  it('the cold is never opened — it has no place to be asked from', () => {
+    for (const seed of [1, 2, 3, 4, 5]) {
+      let game = found(newGame(pack, seed), 'ring', 'whistle', 'knife', 'coat');
+      for (const id of ['ring', 'whistle', 'knife', 'coat']) {
+        game = play(step(game, { kind: 'look', object: id }).game, wait(6));
+      }
+      expect(game.state.presence.lucidity).toBeGreaterThan(0);
+      expect(game.state.flags['subject.cold.queued']).toBeUndefined();
+      expect(game.state.flags['subject.cold.open']).toBeUndefined();
+    }
   });
 });
 
@@ -452,5 +520,65 @@ describe('hiding under the coat', () => {
     }
     expect(hidden).toBeGreaterThan(0);
     expect(game.state.presence.lucidity).toBeLessThan(before);
+  });
+});
+
+/**
+ * The caption over a line: which of the nine is speaking. The register says
+ * how loud a line is; this says who it is about, so a belonging's prose stops
+ * arriving from nowhere.
+ */
+describe('who is speaking', () => {
+  it('a place answers under its own name', () => {
+    const result = step(opened(newGame(pack, 7), 'walls'), { kind: 'look', object: 'walls' });
+    expect(result.lines[0]!.subject).toBe('the walls');
+  });
+
+  it('a belonging is named through the whole of a hold', () => {
+    let game = found(newGame(pack, 3), 'ring');
+
+    const looked = step(game, { kind: 'look', object: 'ring' });
+    expect(looked.lines[0]!.subject).toBe('the brass ring');
+    game = looked.game;
+
+    const held = step(game, { kind: 'attune', object: 'ring' });
+    expect(held.lines[0]!.subject).toBe('the brass ring');
+    game = held.game;
+
+    // Letting go is still the ring talking — it is the ring's own release prose.
+    const released = step(game, { kind: 'still' });
+    expect(released.lines[0]!.subject).toBe('the brass ring');
+  });
+
+  it('a glimpse has no name yet', () => {
+    // The silt gives something up on a press that lands. Whatever comes back
+    // is a shape, so nothing in that turn may be captioned.
+    let game = newGame(pack, 11);
+    for (let i = 0; i < 20; i++) {
+      const { game: next, lines } = step(game, { kind: i % 3 === 2 ? 'haunt' : 'wait' });
+      game = next;
+      const glimpsed = lines.find((l) =>
+        Object.values(pack.below!).some((s) => s.glimpse !== undefined && s.glimpse === l.text),
+      );
+      if (glimpsed) {
+        expect(glimpsed.subject).toBeUndefined();
+        return;
+      }
+    }
+    throw new Error('the silt never gave anything up');
+  });
+
+  it('the presence talking about itself stays headless', () => {
+    const game = found(newGame(pack, 3), 'ring');
+    // A refusal is the presence's own voice, not the ring's.
+    expect(step(game, { kind: 'attune', object: 'ring' }).lines[0]!.subject).toBeUndefined();
+    // So is an empty turn, and so is a place with nothing to say.
+    expect(step(newGame(pack, 7), { kind: 'look', object: 'walls' }).lines[0]!.subject).toBeUndefined();
+  });
+
+  it('every belonging can be told apart before it has been looked at', () => {
+    const glimpseNames = pack.objects.map((o) => pack.below![o.id]!.glimpseName);
+    expect(glimpseNames.every((n) => typeof n === 'string' && n.length > 0)).toBe(true);
+    expect(new Set(glimpseNames).size).toBe(pack.objects.length);
   });
 });

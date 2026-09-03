@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { newGame, NOTHING_NEW, step, TUNING } from '../src/core/engine.js';
 import type { PlayerAction } from '../src/core/engine.js';
 import { pack } from '../src/content/index.js';
-import { AMBIENT_ORDER, BELOW_TUNING, tierOf } from '../src/core/below.js';
+import { AMBIENT_ORDER, BELOW_TUNING, TIMED_ORDER, tierOf } from '../src/core/below.js';
 
 describe('tierOf', () => {
   it('bands lucidity into veiled, plain, named', () => {
@@ -121,10 +121,52 @@ describe('beat zero', () => {
     expect(asleep).not.toContain(veiled('sky'));
     expect(asleep).not.toContain(veiled('silt'));
 
-    // One push, however late, opens them — the rest resume on their own clock.
+    // One push, however late, opens the sky — the rest resume on their own
+    // clock. Not the silt: the floor resolves when it gives a belonging up,
+    // and one push never reaches one.
     const woken = play((turn) => (turn === 7 ? { kind: 'haunt' } : { kind: 'still' }));
     expect(woken).toContain(veiled('sky'));
-    expect(woken).toContain(veiled('silt'));
+    expect(woken).not.toContain(veiled('silt'));
+  });
+
+  it('the floor resolves with the first thing it gives up', () => {
+    // The silt is not on the clock the other four run on. It is the one place
+    // that has to be *shown* something before it is worth looking at, so it
+    // arrives in the same beat as the glimpse, immediately ahead of it: the
+    // floor, then the thing in it.
+    const glimpses = new Set(
+      Object.values(pack.below!)
+        .map((subject) => subject.glimpse)
+        .filter((line): line is string => line !== undefined),
+    );
+    const floor = pack.below!['silt']!.veiled;
+
+    for (const seed of [1, 3, 8, 42]) {
+      let game = newGame(pack, seed, { below: true });
+      let turns = 0;
+      let paired = false;
+      while (game.mode.kind === 'below' && turns < BELOW_TUNING.cap + 4) {
+        const glimpsed = Object.entries(game.mode.phase.seen).find(([, seen]) => seen === 'glimpse');
+        const action: PlayerAction = glimpsed
+          ? { kind: 'look', object: glimpsed[0]! }
+          : game.state.presence.charge >= TUNING.pressCost
+            ? { kind: 'haunt' }
+            : { kind: 'still' };
+        const result = step(game, action);
+        game = result.game;
+        turns++;
+        const said = result.lines.map((line) => line.text);
+        const at = said.findIndex((text) => glimpses.has(text));
+        if (at < 0) {
+          expect(said, `seed ${seed} showed the floor before it gave anything up`).not.toContain(floor);
+          continue;
+        }
+        expect(said[at - 1], `seed ${seed} did not resolve the silt with the glimpse`).toBe(floor);
+        paired = true;
+        break;
+      }
+      expect(paired, `seed ${seed} never reached a glimpse`).toBe(true);
+    }
   });
 
   it('never says the same thing twice', () => {
@@ -155,7 +197,11 @@ describe('beat zero', () => {
   it('never narrates more than a turn can carry, and never drops what it held back', () => {
     // Three clocks can come due at once. What the player caused is always
     // said; the world's own lines wait, but never go away or reorder.
-    for (const seed of [1, 3, 8, 42]) {
+    //
+    // Widely seeded on purpose: what the player caused skips the budget, so a
+    // new `now` line is exactly the kind of thing that quietly makes a beat
+    // three sentences long on some fraction of runs and not on others.
+    for (const seed of [1, 2, 3, 5, 8, 13, 21, 34, 42, 55, 89, 144]) {
       let game = newGame(pack, seed, { below: true });
       const said: string[] = [];
       let turns = 0;
@@ -175,10 +221,13 @@ describe('beat zero', () => {
         for (const line of result.lines) said.push(line.text);
       }
 
-      // every ambient subject still arrives, in its authored order
+      // every ambient subject still arrives, and the four on the clock keep
+      // their authored order. The silt is not among them: it resolves with the
+      // belonging it gives up, wherever in the sequence that falls.
       const at = AMBIENT_ORDER.map((id) => said.indexOf(pack.below![id]!.veiled));
       expect(at.some((i) => i < 0), `seed ${seed} lost an ambient subject`).toBe(false);
-      expect([...at].sort((a, b) => a - b), `seed ${seed} reordered the subjects`).toEqual(at);
+      const timed = TIMED_ORDER.map((id) => said.indexOf(pack.below![id]!.veiled));
+      expect([...timed].sort((a, b) => a - b), `seed ${seed} reordered the subjects`).toEqual(timed);
       // The crossing is the run beginning: the phase hands off to whoever is
       // at the rim, and their opening beat *is* the crossing.
       expect(game.mode.kind, `seed ${seed} never crossed the light`).toBe('scene');

@@ -32,7 +32,7 @@ export const coda: Coda = {
     {
       id: 'stopped',
       when: ({ state }) => state.flags['throwing-prevented'] === true,
-      text: 'Somebody said no, out loud, and the rope went slack, and everyone went home thinking better of themselves. But the one who said it stopped sleeping, and then stopped coming to market, and in the spring he walked up the track alone at an hour nobody would see him, sat on the rim for a while, talked, but not with you. He had been carrying something for months and now he brought it down with him. It is in the silt near your hand now, and the well grows colder still.',
+      text: 'Somebody said no loud enough, and the rope went slack, and everyone went home, quietly thinking better of themselves. But the one who said it stopped sleeping, and then stopped coming to market, and in the spring he walked up the track alone at an hour nobody would see him, sat on the rim for a while, talked, but not with you. He had been carrying something for months and now he brought it down with him. It is in the silt near your hand now, as is he, and the well grows colder still.',
     },
     {
       id: 'sealed',
@@ -60,12 +60,12 @@ export const coda: Coda = {
     {
       id: 'confessed',
       when: ({ state }) => state.flags['tomas-confessed'] === true,
-      text: 'And the one who knew more told somebody else. Somebody else who absolves sins and offers absolution.',
+      text: 'The one who knew more told somebody else. Somebody else who absolves sins and offers absolution.',
     },
     {
       id: 'a-story',
       when: ({ state }) => state.flags['boy-told-a-story'] === true,
-      text: 'The boy will remember this as long as he lives. He tells all of it wrong, though, but better. His version has a shape to it, and shapes become stories.',
+      text: 'There is a boy who will remember this as long as he lives. He tells it wrong and often, but better. His version has a shape to it, and shapes become good stories.',
     },
     {
       id: 'she-stayed',
@@ -78,14 +78,14 @@ export const coda: Coda = {
         const held = Object.values(state.objects).filter((o) => o.found);
         return held.length > 0 && held.reduce((sum, o) => sum + o.charge, 0) <= 0.2 * held.length;
       },
-      text: "And down here nothing keeps the warmth no more. You've spent it on people who are won't reach you and who would not have known it was you, and whatever arrives next will find you all the hungrier.",
+      text: "Down here nothing keeps the warmth no more. You've spent all you've had on people who are won't reach you and who would not have known it was you, and whatever arrives next will find you all the hungrier.",
     },
   ],
 
   verdicts: {
-    haunted: "They will tell that there's as a haunt. Some will laugh and some will take the long way around, and some would do both.",
+    haunted: "They will tell that there's a haunt. Some will laugh and some will take the long way around, and some would do both.",
     mystery: "They will tell it's something nobody ever got to the bottom of. And really, that's an easier path. It asks nothing of anybody in this place.",
-    tragedy: 'They will tell it as a sad thing that happened once, and they will be gentle about it, and with gentleness they will forget.',
+    tragedy: 'They will tell it as a sad thing that happened, and they will be gentle about it, and with their gentleness they will forget.',
     danger: 'They will tell it is a bad place, and they will keep the children away. You will see one next to you soon, despite that.',
     none: 'They never agreed on what it was. Many versions went around the same winter, and until they find something else to talk about, it will be remembered.',
   },
@@ -94,7 +94,7 @@ export const coda: Coda = {
     veiled:
       'And you, the cold does not let you go, and you have stopped expecting it to. There are warm shapes in the silt that you never got as far as knowing, and one of them is close enough to touch.',
     plain:
-      "Three things you looked at properly, and they are yours, and you know it the way you know your own handwriting. There is a fourth down here that you never quite reached. It's warmth is fainter with every passing year.",
-    named: 'Your ring, in the silt, where your hand is. She gave it back to you by the gate and you carried it in your pocket the whole way here. That is your last thought and the last thing you ever did, and you have been down here a long time since then.',
+      "There are three things you looked at properly, and they are yours, and you know it the way you knew things before. There is a fourth down here that you never quite reached. It's warmth is fainter with every passing year.",
+    named: 'Your ring, in the silt, where your hand is. She gave it back to you by the gate and you carried it in your pocket the whole way here. That was your last thought and the last thing you ever did, and you have been down here a long time since then.',
   },
 };

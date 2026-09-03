@@ -7,6 +7,7 @@ import type { BelowSubject } from '../core/below.js';
 export const belowSubjects: Record<string, BelowSubject> = {
   cold: {
     id: 'cold',
+    name: 'cold',
     veiled: 'A weight that paralyzes you, without a chance to fight.',
     plain:
       'The cold of deep stone and dark, heavy air. It settles in the joints first, then the teeth, then the place behind the eyes where thought used to happen.',
@@ -15,6 +16,7 @@ export const belowSubjects: Record<string, BelowSubject> = {
   },
   water: {
     id: 'water',
+    name: 'water',
     veiled: 'A heavy shifting against the ears. It gives way and presses back.',
     plain:
       'The water is deep and thick. It rises and lowers with no apparent pattern, and turns slowly with every slight motion.',
@@ -24,6 +26,7 @@ export const belowSubjects: Record<string, BelowSubject> = {
   },
   walls: {
     id: 'walls',
+    name: 'walls',
     veiled: 'A flat echo bounces off flat shapes. Closed on every side, they cling to each other and curve upward.',
     plain:
       'Courses of stone laid by hand, each set a little back from the one beneath, going up out of reach. Green moss grows in the lime mortar where the damp is thickest, smelling of old cellars.',
@@ -33,6 +36,7 @@ export const belowSubjects: Record<string, BelowSubject> = {
   },
   sky: {
     id: 'sky',
+    name: 'sky',
     veiled: 'A bright silence falling from a round cutaway in darkness. It is impossibly far up.',
     plain: "Sky the size of a coin held at arm's length. It goes white, then yellow along one edge, then out.",
     named:
@@ -40,6 +44,7 @@ export const belowSubjects: Record<string, BelowSubject> = {
   },
   silt: {
     id: 'silt',
+    name: 'silt',
     veiled: 'Soft and deep beneath everything. It swallows whatever sinks into it.',
     plain:
       'The thick mud at the bottom, built of dead leaves, dropped bucket-slats, and forty years of rain. It tastes of river dirt and old rot.',
@@ -51,6 +56,7 @@ export const belowSubjects: Record<string, BelowSubject> = {
   ring: {
     id: 'ring',
     glimpse: 'a small brightness in the silt',
+    glimpseName: 'bright',
     veiled: 'A hard pinch of metal on a pale shape. The edges are crusted green.',
     plain: 'A brass ring, turning green in the damp. It is stuck on a finger, resting on a clenched fist.',
     named:
@@ -60,6 +66,7 @@ export const belowSubjects: Record<string, BelowSubject> = {
   whistle: {
     id: 'whistle',
     glimpse: 'something with a hole in it',
+    glimpseName: 'hollow',
     veiled: 'A narrow strip of metal, crushed flat at one end. The other end is choked with mud.',
     plain:
       'A tin whistle, flattened on one side where a boot came down on it. The mouthpiece is clogged with gray silt, its six stops turned sideways to the light.',
@@ -71,6 +78,7 @@ export const belowSubjects: Record<string, BelowSubject> = {
   knife: {
     id: 'knife',
     glimpse: 'a straight line where nothing should be straight',
+    glimpseName: 'straight',
     veiled: 'A sharp, heavy line buried deep. The grip is rough and bound tight.',
     plain:
       'A short knife, driven straight down into the mud between two flagstones. The handle is bound with tarred hemp cord, double-knotted at the butt.',
@@ -81,6 +89,7 @@ export const belowSubjects: Record<string, BelowSubject> = {
   coat: {
     id: 'coat',
     glimpse: 'a dark spread against the dark',
+    glimpseName: 'dark',
     veiled: 'A light wool thing spread wide, and it moves slowly in the water.',
     plain:
       'A summer wool coat, torn at the left shoulder seam. The cloth is heavy, soaked through, floating an inch off the silt like seaweed.',
@@ -93,7 +102,8 @@ export const belowSubjects: Record<string, BelowSubject> = {
 /** Stub transition blocks. The real prose comes after the phase is played. */
 export const belowProse = {
   opening: [
-    'Dark, and the weight of water not yet named as water.',
+    "It's dark and cold.",
+    "You get used to darkness. Not to the cold.",
     'You are at the bottom. You have been at the bottom for some time.',
   ],
   toMovementII: ['Something in you goes still on its own, before you choose it to.'],
@@ -103,6 +113,6 @@ export const belowProse = {
   settling: [
     'Nothing. The dark goes on being the dark.',
     'The water moves against the stone and comes back to you.',
-    'Somewhere above the rim, weather. It arrives here as nothing at all.',
+    'Somewhere above the rim, weather. You wait for it to arrives here, and it does not.',
   ],
 };

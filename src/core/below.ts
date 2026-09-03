@@ -10,8 +10,18 @@ import type { NarrationLine, ObjectId } from './types.js';
 /** The nine subjects, as data. Populated in `content/below.ts`. */
 export interface BelowSubject {
   id: string;
+  /**
+   * What to caption a line with. Ambient places only: a belonging is named by
+   * its `ObjectDef`, and one name for one thing is the whole point.
+   */
+  name?: string;
   /** Belongings only — what you can tell before pressing turns it up. */
   glimpse?: string;
+  /**
+   * Belongings only — the glimpse, short enough for a client to put on a
+   * control. Stands in for the name until the thing has been looked at.
+   */
+  glimpseName?: string;
   veiled: string;
   plain: string;
   /** Late-game payoff, authored now, unreachable in beat zero. */
@@ -33,9 +43,23 @@ export function tierOf(lucidity: number, isBelonging: boolean): Tier {
   return TIERS[Math.min(2, step + (isBelonging ? 1 : 0))]!;
 }
 
-/** Fixed order. Resolves whether or not the player acts. */
-export const AMBIENT_ORDER = ['cold', 'water', 'walls', 'sky', 'silt'] as const;
+/** The five, as a set. Beat zero is not over until every one has resolved. */
+export const AMBIENT_ORDER = ['water', 'cold', 'walls', 'sky', 'silt'] as const;
 export type AmbientId = (typeof AMBIENT_ORDER)[number];
+
+/**
+ * The four that resolve on the clock, in the order they come.
+ *
+ * The water leads because it is the one thing that answers a push: by the time
+ * it is described the presence has already felt it move. The cold follows —
+ * the opening has named it, so it returns rather than arrives. Then the walls
+ * close it in, and the sky is last, because it is the only one that is a way
+ * out and nothing should suggest one early.
+ *
+ * The silt is not here. It resolves when the first belonging comes out of it,
+ * which is the only moment the floor is worth looking at.
+ */
+export const TIMED_ORDER = ['water', 'cold', 'walls', 'sky'] as const;
 
 export type Movement = 1 | 2 | 3;
 
@@ -73,9 +97,10 @@ export const BELOW_TUNING = {
   /** Turns between one ambient subject resolving and the next, in the dark. */
   ambientEvery: 2,
   /**
-   * How far the dark resolves for a presence that has never acted. The cold,
-   * the water and the walls press against you regardless; the sky and the silt
-   * are *looked at*, and nothing looks until it knows it can act.
+   * How far down `TIMED_ORDER` the dark resolves for a presence that has never
+   * acted. The water, the cold and the walls press against you regardless; the
+   * sky is *looked at*, and nothing looks until it knows it can act. The silt
+   * is not on this clock at all and needs a press of its own.
    */
   ambientWithoutPressing: 3,
   /**
@@ -149,7 +174,13 @@ export function fillSilence(phase: BelowPhase, narrated: boolean): { phase: Belo
 export const eyesOpen = (phase: BelowPhase): boolean => phase.pressCount > 0 || phase.exhausted;
 
 export type BelowEvent =
-  | { kind: 'ambient'; subject: AmbientId }
+  /**
+   * `caused` marks the one ambient the player brought on rather than waited
+   * out. It is the difference between the world's own clock coming due, which
+   * can wait for a quiet turn, and an answer to something just done, which
+   * cannot — see how `belowStep` sorts them.
+   */
+  | { kind: 'ambient'; subject: AmbientId; caused?: boolean }
   | { kind: 'movement'; to: Movement }
   | { kind: 'glimpse'; object: ObjectId }
   | { kind: 'end' };
@@ -178,10 +209,13 @@ export function advanceBelow(phase: BelowPhase, input: BelowInput): { phase: Bel
   };
 
   // I. the dark — ambient subjects resolve on their own clock, in fixed order,
-  // stopping at the walls until the presence has acted once.
-  const reach = eyesOpen(next) ? AMBIENT_ORDER.length : BELOW_TUNING.ambientWithoutPressing;
-  if (next.revealed.length < reach && next.turn % BELOW_TUNING.ambientEvery === 0) {
-    const subject = AMBIENT_ORDER[next.revealed.length]!;
+  // stopping at the walls until the presence has acted once. Counted over the
+  // timed four alone: the silt can arrive mid-sequence and must not push the
+  // sky forward by taking a slot it was never on.
+  const onClock = next.revealed.filter((id) => (TIMED_ORDER as readonly string[]).includes(id)).length;
+  const reach = eyesOpen(next) ? TIMED_ORDER.length : BELOW_TUNING.ambientWithoutPressing;
+  if (onClock < reach && next.turn % BELOW_TUNING.ambientEvery === 0) {
+    const subject = TIMED_ORDER.find((id) => !next.revealed.includes(id))!;
     next = { ...next, revealed: [...next.revealed, subject] };
     events.push({ kind: 'ambient', subject });
   }
@@ -202,6 +236,13 @@ export function advanceBelow(phase: BelowPhase, input: BelowInput): { phase: Bel
   const target = input.pressedThisTurn && next.pressCount >= 2 ? next.found.find((id) => !next.seen[id]) : undefined;
   if (target) {
     if (next.owed || input.siltRolled) {
+      // The floor comes into view with the first thing it gives up. Before
+      // that it is only the dark you are lying in; a belonging coming out of
+      // it is what makes it somewhere to look.
+      if (!next.revealed.includes('silt')) {
+        next = { ...next, revealed: [...next.revealed, 'silt'] };
+        events.push({ kind: 'ambient', subject: 'silt', caused: true });
+      }
       next = { ...next, owed: false, seen: { ...next.seen, [target]: 'glimpse' } };
       events.push({ kind: 'glimpse', object: target });
     } else {

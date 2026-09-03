@@ -1,11 +1,11 @@
-import { HAS_PRESSED, newGame, NOTHING_NEW, runStatus, step, TUNING } from '../core/engine.js';
+import { newGame, NOTHING_NEW, runStatus, step, TUNING } from '../core/engine.js';
 import type { Game, PlayerAction } from '../core/engine.js';
 import { pack } from '../content/index.js';
 import { feelBand, feelOf, stanceLine, water } from '../core/readout.js';
 import { BELIEFS, EMOTIONS } from '../core/types.js';
 import type { LineKind, NarrationLine } from '../core/types.js';
-import { makeShaft } from './visuals.js';
-import type { Bands } from './visuals.js';
+import { makeShaft, PLACES } from './visuals.js';
+import type { Bands, PlaceId } from './visuals.js';
 import { initAnalytics } from './analytics.js';
 
 initAnalytics();
@@ -25,25 +25,21 @@ const meters = el('meters');
 const debug = el<HTMLPreElement>('debug');
 
 /**
- * Everything down here, in reading order, three by three. Built once and never
+ * The four things that are yours, in reading order. Built once and never
  * rebuilt: cells change state, the layout never moves, so the player sees from
- * the first frame that there are exactly nine things and never a tenth.
+ * the first frame that there are exactly four and never a fifth.
+ *
+ * The five places are not here. They are in the picture — see `visuals.ts`.
  */
-const CELLS: { id: string; label: string; belonging: boolean }[] = [
-  { id: 'cold', label: 'the cold', belonging: false },
-  { id: 'water', label: 'the water', belonging: false },
-  { id: 'walls', label: 'the walls', belonging: false },
-  { id: 'sky', label: 'the sky', belonging: false },
-  { id: 'silt', label: 'the silt', belonging: false },
-  { id: 'ring', label: 'the ring', belonging: true },
-  { id: 'whistle', label: 'the whistle', belonging: true },
-  { id: 'knife', label: 'the knife', belonging: true },
-  { id: 'coat', label: 'the coat', belonging: true },
+const CELLS: { id: string; label: string }[] = [
+  { id: 'ring', label: 'the ring' },
+  { id: 'whistle', label: 'the whistle' },
+  { id: 'knife', label: 'the knife' },
+  { id: 'coat', label: 'the coat' },
 ];
 
-/** Ambient subjects met so far. The phase forgets; the room does not. */
-const met = new Set<string>();
 const cells = new Map<string, HTMLButtonElement>();
+const labels = new Map<string, HTMLSpanElement>();
 /** Cells that have already surfaced, so the arrival only ever plays once. */
 const arrived = new Set<string>();
 
@@ -64,8 +60,11 @@ CELLS.forEach((cell, index) => {
   // of the accessibility tree until it is the player's to know.
   const label = document.createElement('span');
   label.className = 'label';
+  // Filled in by `render`: a thing out of the silt is not yet a named thing,
+  // and until it has been looked at the cell says only what was glimpsed.
   label.textContent = cell.label;
   button.append(label);
+  labels.set(cell.id, label);
   button.onclick = () => onCell(cell);
   // Which corner the thing calls from. Walked round rather than random —
   // randomness belongs to the simulation — so no two neighbours share a side
@@ -81,33 +80,79 @@ CELLS.forEach((cell, index) => {
   cells.set(cell.id, button);
 });
 
-const shaft = makeShaft(el('shaft'), fitLog, () => document.querySelector('footer')!.getBoundingClientRect().top);
+const shaft = makeShaft(el('shaft'), {
+  onLayout: fitLog,
+  floor: () => document.querySelector('footer')!.getBoundingClientRect().top,
+  onPlace,
+});
 
 /**
- * The words live between the coin of sky and the waterline. Both edges come
- * from the picture itself, so moving the geometry moves the text with it.
+ * The words live on the dry stone: between the rim overhead and the waterline.
+ * They never cross the water, which is the whole reason the well is only half
+ * full — light text over a bright halftone cannot be read.
+ *
+ * Both edges come from the picture itself, so moving the geometry moves the
+ * text with it.
  *
  * Safe against feedback: `#log` is the flex child that absorbs slack, so
  * shrinking it leaves the header and footer where they were.
  */
 function fitLog({ skyBottom, waterTop }: Bands): void {
   const gap = 14;
-  const header = document.querySelector('header')!.getBoundingClientRect().bottom;
+  // Once it is over the words take the whole column, top edge included. The
+  // picture is down to a quarter of itself by then and the controls are gone,
+  // so there is nothing left to leave room for — and the reading room is what
+  // decides whether the ending has to be scrolled at all.
+  if (game.mode.kind === 'over') {
+    log.style.marginTop = `${gap}px`;
+    log.style.marginBottom = `${gap}px`;
+    fadeCoda();
+    return;
+  }
+  // The header is optional — `index.html` may not have one. With it, the words
+  // start under it; without it, at the top of the column.
+  const top = document.querySelector('header');
+  const header = top ? top.getBoundingClientRect().bottom : el('app').getBoundingClientRect().top;
   const footer = document.querySelector('footer')!.getBoundingClientRect().top;
   log.style.marginTop = `${Math.max(0, skyBottom + gap - header)}px`;
-  // Once it is over the words take the whole shaft — nothing left to read the
-  // water for. `render` puts the controls away at the same moment.
-  log.style.marginBottom =
-    game.mode.kind === 'over' ? `${gap}px` : `${Math.max(0, footer - waterTop + gap)}px`;
+  log.style.marginBottom = `${Math.max(0, footer - waterTop + gap)}px`;
 }
 
 /**
- * The world comes into view on its own clock, which only starts on the first
- * push; every line after that brings it up. A player who never acts sits in
- * the dark, which is the correct outcome.
+ * Which edges of the ending have more past them.
+ *
+ * The coda is the only thing in the app that scrolls, and a scrollbar beside
+ * it is a piece of browser chrome standing in the middle of an ending. So the
+ * bar is hidden and the words say it themselves: the edge they continue past
+ * dissolves, and stops dissolving once there is nothing past it. An edge that
+ * is the actual start or end of the text never fades — a soft top on a coda
+ * you have not scrolled would be lying about where it begins.
  */
-const REVEAL_LINES = 14;
-let revealed = 0;
+function fadeCoda(): void {
+  if (!log.classList.contains('ended')) return;
+  const past = log.scrollHeight - log.clientHeight - log.scrollTop;
+  log.classList.toggle('more-above', log.scrollTop > 1);
+  log.classList.toggle('more-below', past > 1);
+}
+
+log.addEventListener('scroll', fadeCoda, { passive: true });
+
+/**
+ * Places already out of the dark. The reveal is a one-shot per place and it is
+ * driven by the lines, not by the phase: `phase.revealed` grows on the turn
+ * the subject comes due, but the sentence about it can be held back a beat by
+ * `linesPerTurn`, and inside a beat it waits on the stagger. Reading state at
+ * render time put the stone up before the words that name it.
+ */
+const outOfTheDark = new Set<string>();
+
+/** One place, coming up as its line is read. Anything else is not a place. */
+function reveal(id: string | undefined, delayMs: number): void {
+  if (id === undefined || outOfTheDark.has(id)) return;
+  if (!(PLACES as readonly string[]).includes(id)) return;
+  outOfTheDark.add(id);
+  setTimeout(() => shaft.resolve(id as PlaceId), delayMs);
+}
 
 /**
  * Lines arrive one at a time even when a beat produced several: all are in the
@@ -140,11 +185,16 @@ const gapAfter = (line: NarrationLine, next: NarrationLine): number =>
  */
 const MAX_LINES = 12;
 
-/** The register comes from the engine; the client never guesses at it. */
-function say(text: string, kind: LineKind | 'marker', delayMs = 0): void {
+/**
+ * The register comes from the engine; the client never guesses at it. So does
+ * the caption — a line is one of the nine speaking or it is not, and the
+ * client only dresses what it is told.
+ */
+function say(text: string, kind: LineKind | 'marker', delayMs = 0, subject?: string): void {
   const p = document.createElement('p');
   p.className = kind;
   p.textContent = text;
+  if (subject) p.dataset['subject'] = subject;
   if (delayMs > 0) p.style.animationDelay = `${Math.round(delayMs)}ms`;
   log.append(p);
   // The ending outranks the cap: older lines go, but a coda line is never
@@ -152,19 +202,38 @@ function say(text: string, kind: LineKind | 'marker', delayMs = 0): void {
   while (log.childElementCount > MAX_LINES && !log.firstElementChild?.classList.contains('coda')) {
     log.firstElementChild?.remove();
   }
-  if (game.state.flags[HAS_PRESSED]) revealed++;
+  // `forget` goes on taking coda lines away long after the last render, so the
+  // edges are refreshed wherever the log's contents actually move. Free during
+  // a run: nothing scrolls until the ending.
+  fadeCoda();
+}
+
+/**
+ * A run of lines, paced. Every entrance in the app goes through here, so
+ * nothing can arrive as a paragraph by having been written somewhere that
+ * forgot about the stagger — the opening did exactly that.
+ *
+ * Returns where the last line fell, so a caller with something to add after
+ * the beat can carry on from it rather than landing on top of it.
+ */
+function narrate(lines: readonly NarrationLine[]): number {
+  let delay = 0;
+  lines.forEach((line, i) => {
+    say(line.text, line.kind, delay, line.subject);
+    // The place comes up as its own sentence starts to surface, not when the
+    // beat that carries it was computed.
+    reveal(line.subjectId, delay);
+    const next = lines[i + 1];
+    if (next) delay += gapAfter(line, next);
+  });
+  return delay;
 }
 
 function act(action: PlayerAction): void {
   const wasInScene = game.mode.kind === 'scene';
   const result = step(game, action);
   game = result.game;
-  let delay = 0;
-  result.lines.forEach((line, i) => {
-    say(line.text, line.kind, delay);
-    const next = result.lines[i + 1];
-    if (next) delay += gapAfter(line, next);
-  });
+  const delay = narrate(result.lines);
   if (!quiet && runStatus(game).kind === 'quiet') {
     quiet = true;
     const last = result.lines.at(-1);
@@ -183,28 +252,33 @@ function act(action: PlayerAction): void {
 const nameOf = (id: string): string => pack.objects.find((o) => o.id === id)?.name ?? id;
 
 /**
- * A cell comes online when its own line has been said. Before that, in beat
- * zero, clicking one pushes instead — nothing clicked in the dark does
- * nothing, and pushing is what turns the next cell up. Once the phase is over
- * a cell that cannot be acted on is disabled instead.
+ * A cell comes online once the silt has given the thing up and its own line
+ * has been said. Until then it is dead: in the dark there is nothing of yours
+ * to hold, and the room is what you touch.
  */
-function onCell(cell: { id: string; belonging: boolean }): void {
+function onCell(cell: { id: string }): void {
   const button = cells.get(cell.id)!;
   const state = game.state.objects[cell.id];
-  if (cell.belonging && state && surfaced(cell.id)) {
-    pulse(button, 'acted', 500);
-    act(state.discovered ? { kind: 'attune', object: cell.id } : { kind: 'look', object: cell.id });
-    return;
-  }
-  if (!cell.belonging && open(cell.id)) {
-    pulse(button, 'acted', 500);
-    act({ kind: 'look', object: cell.id });
-    return;
-  }
-  if (game.mode.kind === 'below') push(button);
+  if (!state || !surfaced(cell.id)) return;
+  pulse(button, 'acted', 500);
+  act(state.discovered ? { kind: 'attune', object: cell.id } : { kind: 'look', object: cell.id });
 }
 
-/** An ambient subject the presence can turn to. One look, then it closes again. */
+/**
+ * A place, asked. It costs a turn whether or not it has anything — the engine
+ * answers with `NOTHING_NEW` when it does not, and the picture never promises
+ * more than that it is worth looking.
+ *
+ * Two moments it is not a question at all: beat zero, where the room is still
+ * assembling itself and nothing is clickable, and a scene, where somebody at
+ * the rim has the turn.
+ */
+function onPlace(id: PlaceId): void {
+  if (game.mode.kind === 'below' || game.mode.kind === 'scene' || game.mode.kind === 'over') return;
+  act({ kind: 'look', object: id });
+}
+
+/** A place with something to say. It signals until it is asked. */
 const open = (id: string): boolean => game.state.flags[`subject.${id}.open`] === true;
 
 /** A one-shot class, with a timer behind it in case the tab is not watching. */
@@ -235,16 +309,8 @@ function push(source?: Element): void {
   act({ kind: 'haunt' });
 }
 
-/**
- * Has this thing's own line been said yet? A belonging is on the world's
- * record once the silt gives it up; an ambient subject only resolves inside
- * the phase.
- */
-function surfaced(id: string): boolean {
-  if (game.state.objects[id]) return game.state.objects[id]!.found;
-  if (game.mode.kind !== 'below') return true;
-  return game.mode.phase.revealed.includes(id as never);
-}
+/** Has the silt given this one up yet? Only then is it a thing you can hold. */
+const surfaced = (id: string): boolean => game.state.objects[id]?.found === true;
 
 let quiet = false;
 let forgetting: ReturnType<typeof setInterval> | undefined;
@@ -271,18 +337,32 @@ function forget(): void {
 
 function render(): void {
   const inScene = game.mode.kind === 'scene';
-  // Clamped here, not in the shaft: `revealed` counts all run, so an unclamped
-  // value would swallow the scaling applied below.
-  const seen = game.state.flags[HAS_PRESSED] ? Math.min(1, revealed / REVEAL_LINES) : 0;
+  // Beat zero survived: the room is simply there, and this is the backstop for
+  // any place whose line the phase passed without saying.
+  //
+  // Not once it is over. A run that starved in the dark never found the sky or
+  // the silt, and revealing them here put both of them up in the same frame as
+  // the coda — the ending announcing the way out the presence never found.
+  // What was never seen stays unseen.
+  if (game.mode.kind !== 'below' && game.mode.kind !== 'over') {
+    for (const id of PLACES) reveal(id, 0);
+  }
   el('shaft').classList.toggle('receding', game.mode.kind === 'over');
   shaft.update({
-    // Once it is over the picture goes back down: the words run the whole
-    // shaft, and the ending is what has to be readable, not the place.
-    visibility: game.mode.kind === 'over' ? seen * 0.28 : seen,
+    // Full through the run: what comes into view is one place at a time, and a
+    // ramp across the whole picture only drowned that out. Once it is over the
+    // picture goes back down — the words run the whole shaft, and the ending is
+    // what has to be readable, not the place.
+    visibility: game.mode.kind === 'over' ? 0.28 : 1,
+    lucidity: game.state.presence.lucidity,
     occupied: inScene,
     charge: game.state.presence.charge,
     pressing: game.state.presence.stance.kind === 'pressing',
     turn: game.state.turn,
+    // A place that is open moves until it is asked. Nothing signals while a
+    // scene holds the turn — it would be offering something you cannot take.
+    signals: game.mode.kind === 'idle' ? PLACES.filter(open) : [],
+    asking: game.mode.kind === 'idle',
   });
   el('shaft').setAttribute(
     'aria-label',
@@ -290,37 +370,26 @@ function render(): void {
   );
 
   // Cells are only restyled, never added, removed or reordered. One lights
-  // when its own line has been said; in the dark an unlit one still pushes.
-  const inBelow = game.mode.kind === 'below';
-  if (game.mode.kind === 'below') for (const id of game.mode.phase.revealed) met.add(id);
-  else for (const cell of CELLS) if (!cell.belonging) met.add(cell.id);
-
+  // when the silt has given the thing up and its line has been said.
   for (const cell of CELLS) {
     const button = cells.get(cell.id)!;
-    const lit = cell.belonging ? surfaced(cell.id) && !!game.state.objects[cell.id] : met.has(cell.id);
+    const lit = surfaced(cell.id);
     button.classList.toggle('lit', lit);
 
-    // Only belongings call: announced once out of the silt, then asking
-    // quietly while unexamined. The cold and the walls ask for nothing.
-    if (cell.belonging && lit && !arrived.has(cell.id)) {
+    // Announced once out of the silt, then asking quietly while unexamined.
+    if (lit && !arrived.has(cell.id)) {
       arrived.add(cell.id);
       button.classList.add('surfacing');
       setTimeout(() => button.classList.remove('surfacing'), 1200);
     }
-    button.classList.toggle(
-      'calling',
-      cell.belonging && lit && game.state.objects[cell.id]?.discovered === false,
-    );
-
-    if (!cell.belonging) {
-      // In the dark the cell answers with a push. Afterwards it is dead stone
-      // until lucidity turns one of them up.
-      button.disabled = !inBelow && !open(cell.id);
-      continue;
-    }
+    button.classList.toggle('calling', lit && game.state.objects[cell.id]?.discovered === false);
 
     const state = game.state.objects[cell.id];
-    button.disabled = !inBelow && !lit;
+    // Its name is the reward for looking. Before that the cell wears the
+    // glimpse — enough to tell the four apart, not enough to know any of them.
+    labels.get(cell.id)!.textContent =
+      state?.discovered === true ? cell.label : (pack.below?.[cell.id]?.glimpseName ?? cell.label);
+    button.disabled = !lit;
     if (!lit || !state) {
       delete button.dataset['feel'];
       button.title = '';
@@ -362,6 +431,10 @@ function render(): void {
     // about the run, and a long ending has to be readable to its end.
     for (const line of [...log.children]) if (!line.classList.contains('coda')) line.remove();
     log.classList.add('ended');
+    // The scrollbar was also the only thing making this reachable without a
+    // mouse. It is gone, so the ending takes focus itself — and only now, when
+    // it is the whole page and there is nothing else to tab to.
+    log.tabIndex = 0;
     fitLog(shaft.bands());
     if (game.mode.spine === 'forgotten') forget();
     if (!debug.hidden) debug.textContent = dump();
@@ -426,5 +499,7 @@ el('peek').onclick = () => {
   render();
 };
 
-(pack.belowProse?.opening ?? []).forEach((line, i) => say(line, 'fact', i));
+// The first thing anybody sees, and it was arriving as one block: three
+// `say`s a millisecond apart. It is a beat like any other and paces like one.
+narrate((pack.belowProse?.opening ?? []).map((text): NarrationLine => ({ kind: 'fact', text })));
 render();

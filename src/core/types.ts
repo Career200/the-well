@@ -35,6 +35,24 @@ export type LineKind = 'scene' | 'fact' | 'idle' | 'system' | 'coda';
 export interface NarrationLine {
   kind: LineKind;
   text: string;
+  /**
+   * Who the line is about, when it is one of the nine subjects speaking: a
+   * place resolving or a belonging looked at, held, or going cold. The client
+   * captions it, so those lines stop arriving headless.
+   *
+   * Only ever set when the text is the subject's own prose and the presence
+   * knows what it is looking at. Never on a glimpse — a shape in the silt has
+   * no name yet — and never on the presence's own voice, an idle turn, a
+   * scene, the system, or the coda.
+   */
+  subject?: string;
+  /**
+   * The same subject, as its id rather than its prose name. Set whenever
+   * `subject` is. A client that draws the nine has to match on something the
+   * writing cannot drift away from — `subject` is authored text and is free
+   * to stop looking like an id at any point.
+   */
+  subjectId?: string;
 }
 
 export interface PersonState {

@@ -40,8 +40,12 @@ body { overflow-x: hidden; }
   position: relative;
 }
 
-/* Everything the player reads sits above the shaft. */
+/* Everything the player reads or touches sits above the shaft. It has to be
+   every direct child that is not the shaft: the place regions inside `#shaft`
+   take pointer events across the whole viewport, so anything left behind them
+   is unclickable, not merely underneath. */
 #app > header,
+#app > #peek,
 #app > #log,
 #app > footer {
   position: relative;
@@ -73,6 +77,9 @@ h1 {
    can see, and nothing down here is ever recovered. */
 #log {
   flex: 1;
+  /* The places are behind the words now, and the words are not a lid: a tap
+     that lands on a sentence is a tap on whatever the sentence is over. */
+  pointer-events: none;
   min-height: 0;
   display: flex;
   flex-direction: column;
@@ -87,11 +94,50 @@ h1 {
 /* Once the coda is the only thing left: from the top, whole, and re-readable.
    The scrollbar comes back for exactly this — an ending you cannot get to the
    end of is not an ending. */
+/* The one exception: a coda long enough to scroll has to be draggable, so
+   the words take their events back once they are all there is. */
 #log.ended {
+  pointer-events: auto;
   justify-content: flex-start;
   overflow-y: auto;
   mask-image: none;
-  scrollbar-width: thin;
+  /* No bar. See `fadeCoda` in main.ts — the edges of the text carry this, and
+     a scrollbar is the one piece of browser chrome that cannot be made to
+     belong at the bottom of a well. */
+  scrollbar-width: none;
+}
+
+/* Focusable once it is the whole page, so it can be scrolled without a mouse.
+   Same hairline the places use — it is an edge, not a highlight. */
+#log.ended:focus-visible {
+  outline: 1px solid rgba(154, 165, 172, 0.45);
+  outline-offset: 4px;
+}
+
+#log.ended::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+}
+
+/* The edge the words run off, dissolving. Only ever the edge there is actually
+   more past — set from the scroll position, so the ending never softens its
+   own first or last line. */
+#log.ended.more-below {
+  mask-image: linear-gradient(to bottom, #000 calc(100% - 4rem), transparent 100%);
+}
+
+#log.ended.more-above {
+  mask-image: linear-gradient(to bottom, transparent 0, #000 4rem);
+}
+
+#log.ended.more-above.more-below {
+  mask-image: linear-gradient(
+    to bottom,
+    transparent 0,
+    #000 4rem,
+    #000 calc(100% - 4rem),
+    transparent 100%
+  );
 }
 
 #log p {
@@ -117,6 +163,21 @@ h1 {
   color: var(--ink);
   border-left: 1px solid var(--edge);
   padding-left: 1rem;
+}
+
+/* The caption over a subject's own line — which of the nine is speaking. Set
+   by the engine, never guessed at here (see `NarrationLine.subject`), and only
+   ever present on a `fact`, so it inherits that register's indent and sits
+   inside the rule rather than beside it. Small and dim: it is a name-plate,
+   and the sentence under it is the line. */
+#log p[data-subject]::before {
+  content: attr(data-subject);
+  display: block;
+  margin-bottom: 0.2rem;
+  color: var(--dim);
+  font-size: 0.68rem;
+  letter-spacing: 0.16em;
+  text-transform: lowercase;
 }
 
 /* idle — an empty turn. The only faded one, and the only italic one. */
@@ -186,12 +247,13 @@ footer.gone {
 
 .actions button { flex: 1; }
 
-/* Everything there is, three by three, reserved at full size from the first
+/* Everything that is yours, in one row, reserved at full size from the first
    frame. It never grows, never wraps and never reorders — the only thing that
-   ever changes here is whether a cell is lit. */
+   ever changes here is whether a cell is lit. The places are not here; they
+   are in the picture. */
 #subjects {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(4, 1fr);
   gap: 0.35rem;
 }
 
@@ -338,6 +400,11 @@ button {
   }
   .surfacing { animation-duration: 0.45s; }
   .hinting::before { animation: none; opacity: 0.8; }
+
+  /* The shaft is deliberately not in here. Its motion is a pixel of dot swell
+     and signal loops measured in tens of seconds — nothing this setting is
+     protecting against — and silencing it left the picture a still image,
+     which reads as broken rather than as considerate. See `visuals.ts`. */
 }
 
 /* Unmet: legible, but only just. The cell has to be readable — the whole
@@ -446,24 +513,178 @@ body.debug #meters {
 /* The walls: under the words on purpose, and faint enough that no message
    type loses contrast crossing them — grey at the ink's own hue, never a
    colour of its own. */
-#shaft .walls {
+#shaft .walls line,
+#shaft .walls path {
   stroke: #cfc8bd;
   stroke-width: 1;
   vector-effect: non-scaling-stroke;
   fill: none;
-  opacity: 0.08;
 }
 
-/* Halftone: the dots are the light, the ground is the shaft. */
-#shaft .water {
-  color: #9aa5ac;
-  transition: color 0.45s ease-out;
-}
+/* Dry stone, above the waterline. The only large surface the words sit on,
+   and now the only one with nothing drawn over it, so it can carry a little
+   more weight than the old single-opacity walls did. */
+#shaft .walls .dry { opacity: 0.22; }
+
+/* The same stone, going down into the water. Dimmer because it is behind the
+   grain, not because it is further away. */
+#shaft .walls .drowned { opacity: 0.09; }
+
+/* Halftone: the dots are the light, the ground is the shaft. Brightest just
+   under the surface, where the light gets in, and dying toward the floor. */
+#shaft .water { color: #8f9aa1; }
+
+#shaft .water .grain { transition: color 0.45s ease-out; }
 
 /* Something is being done to it, right now, this beat. */
-#shaft .scene.pressing .water { color: #cdd6db; }
+#shaft .scene.pressing .water .grain { color: #cdd6db; }
 
-#shaft .sky { filter: drop-shadow(0 0 26px rgba(247, 230, 173, 0.18)); }
+/* The waterline, seen from underneath. Its shape is the charge: a clean
+   ellipse is glass, and it will not hold still once anything has been spent.
+   It sits directly under the last line of text, which is what makes it the
+   most legible reading of the charge in the picture. */
+#shaft .water .waterline {
+  stroke: #b9c6cc;
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+  opacity: 0.5;
+}
+
+/* The floor. Dark, but no longer an edge: the fill fades out at the top, and
+   the coarse stuff scatters up into the water, so the two grains meet in a
+   band. A drawn rim is what made this read as a shape laid on the picture. */
+#shaft .silt .silt-grain {
+  color: #4a4235;
+  opacity: 0.62;
+  transition: color 0.6s ease-out, opacity 0.6s ease-out;
+}
+
+/* No bloom. The light stops at the stone — a drop-shadow here spills the glow
+   onto the wall, which is the one thing the hole is not allowed to do. */
+
+/* The lip of the opening, where the stonework ends. The coin is drawn on this
+   same ellipse and its light is gone well before the edge, so this is the only
+   thing that says how wide the hole actually is — and it has to stay under the
+   walls converging into it, not draw a ring around them. */
+#shaft .sky .rim {
+  stroke: #cfc8bd;
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+  opacity: 0.1;
+}
+
+/* ---------------------------------------------------------------------------
+   The places. Each is a region of the picture and a tap target over it. A
+   place with something to say moves; that is the whole of the announcement,
+   and there is no text on any of it.
+   --------------------------------------------------------------------------- */
+
+/* The shapes come up one at a time, each on the beat its own line is read, so
+   the room assembles itself while it is being described. A second is long
+   enough to read as something arriving and short enough to still belong to the
+   sentence that brought it. */
+#shaft .place-shape {
+  opacity: 0;
+  transition: opacity 1s ease-out;
+}
+
+#shaft .place-shape.resolved { opacity: 1; }
+
+/* Full width, so a target is never a thin strip, and stacked in the order they
+   run down the picture. Transparent: what the player sees is the shape. */
+#shaft .places {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+#shaft .places .place {
+  position: absolute;
+  left: 0;
+  right: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  box-shadow: none;
+  cursor: pointer;
+  pointer-events: auto;
+}
+
+#shaft .places .place:hover:not(:disabled) {
+  background: none;
+  box-shadow: none;
+  transform: none;
+}
+
+/* Nothing is drawn for focus by default down here, but a keyboard has to be
+   able to find the places, so it gets the one visible edge in the picture. */
+#shaft .places .place:focus-visible {
+  outline: 1px solid rgba(154, 165, 172, 0.45);
+  outline-offset: -3px;
+}
+
+/* sky — it comes down the shaft and goes back up. Perspective, not brightness:
+   the one thing that is out of reach pretending, briefly, that it is not. */
+#shaft .sky.signalling {
+  transform-origin: var(--sky-origin, 50% 12%);
+  animation: sky-nearer 9s ease-in-out infinite;
+}
+
+@keyframes sky-nearer {
+  0%, 100% { transform: scale(1); }
+  45% { transform: scale(1.5); }
+}
+
+/* walls — a light wanders over the stone, slow enough that you are not sure it
+   moved until you see it move again. Hidden entirely until they have
+   something: the walls are not lit from anywhere. */
+#shaft .wall-light {
+  opacity: 0;
+  transition: opacity 2s ease-out;
+}
+
+#shaft .walls.signalling .wall-light {
+  opacity: 1;
+  animation: wall-wander 26s ease-in-out infinite;
+}
+
+@keyframes wall-wander {
+  0%, 100% { transform: translate(-28%, 8%); }
+  35% { transform: translate(12%, -14%); }
+  70% { transform: translate(26%, 10%); }
+}
+
+/* water — it already moves, so it does not move differently. A glow gathers
+   *under* the surface, in the body of the water, and the grain warms with it.
+   Two channels because one was invisible: the root brightness filter eats a
+   colour shift on its own. */
+#shaft .water .gathering {
+  opacity: 0;
+  transform-origin: 50% 50%;
+}
+
+#shaft .water.signalling .gathering { animation: water-gathering 7s ease-in-out infinite; }
+#shaft .water.signalling .grain { animation: water-warming 7s ease-in-out infinite; }
+
+@keyframes water-gathering {
+  0%, 100% { opacity: 0; transform: scale(0.72); }
+  50% { opacity: 1; transform: scale(1.06); }
+}
+
+@keyframes water-warming {
+  0%, 100% { color: #8f9aa1; }
+  50% { color: #bcd6c4; }
+}
+
+/* silt — slow, and continuous with the halftone, so it reads as part of the
+   same picture rather than as a thing that lit up. It has to warm as well as
+   brighten: near-black going slightly less near-black is not a signal. */
+#shaft .silt.signalling .silt-grain { animation: silt-stirring 11s ease-in-out infinite; }
+
+@keyframes silt-stirring {
+  0%, 100% { color: #4a4235; opacity: 0.62; }
+  50% { color: #8a7654; opacity: 1; }
+}
 
 /* The corners answering the water. A hint that the room is wrong — never a
    reading of how much is left, and it is the only thing that lands on the
@@ -530,4 +751,77 @@ body.debug #meters {
   font: 11px/1.5 ui-monospace, monospace;
   color: var(--dim);
   white-space: pre;
+}
+
+/* ---------------------------------------------------------------------------
+   The debug harness (`shaft.html`). Dev only, and deliberately plain: it is
+   an instrument panel and it should not look like anything in the game.
+   --------------------------------------------------------------------------- */
+
+body.shaft-debug #controls {
+  position: fixed;
+  inset: 0.75rem 0.75rem auto auto;
+  z-index: 2;
+  width: 15rem;
+  max-height: calc(100vh - 1.5rem);
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  background: rgba(13, 12, 10, 0.92);
+  border: 1px solid var(--edge);
+  padding: 0.7rem;
+  font: 11px/1.5 ui-monospace, monospace;
+  color: var(--dim);
+}
+
+/* `hidden` is a UA rule at the lowest specificity, and the block above beats
+   it. Say it again where it can win, or the toggle does nothing. */
+body.shaft-debug #controls[hidden] { display: none; }
+
+body.shaft-debug fieldset {
+  border: 1px solid var(--edge);
+  padding: 0.5rem;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+body.shaft-debug legend { letter-spacing: 0.15em; }
+
+body.shaft-debug label {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+body.shaft-debug label span { flex: 0 0 4.5rem; }
+body.shaft-debug label input[type='range'] { flex: 1; min-width: 0; }
+body.shaft-debug label b { flex: 0 0 2.2rem; font-weight: normal; color: var(--cold); }
+body.shaft-debug label input[type='checkbox'] { flex: 0 0 auto; }
+body.shaft-debug label input[type='number'] { width: 4rem; }
+
+body.shaft-debug #controls button {
+  font: inherit;
+  padding: 0.25rem 0.5rem;
+  box-shadow: none;
+}
+
+body.shaft-debug .note { margin: 0; color: var(--cold); }
+
+/* Always over the picture: the panel folds away, this does not. */
+body.shaft-debug #toolbar {
+  position: fixed;
+  inset: 0.75rem auto auto 0.75rem;
+  z-index: 3;
+  display: flex;
+  gap: 0.3rem;
+}
+
+body.shaft-debug #toolbar button {
+  font: 11px/1.5 ui-monospace, monospace;
+  padding: 0.3rem 0.6rem;
+  background: rgba(13, 12, 10, 0.92);
+  box-shadow: none;
 }

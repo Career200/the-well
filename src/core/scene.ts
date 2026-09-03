@@ -3,7 +3,11 @@ import type { Emotion, ObjectId, PersonId, SceneId, WorldState } from './types.j
 
 /** What the player did *while* a scene was playing. Built up beat by beat. */
 export interface SceneContext {
-  /** Total haunting applied during this scene. ~0.3 is a noise, ~0.9 is undeniable. */
+  /**
+   * Total haunting applied during this scene, at `TUNING.pressure` a press.
+   * One press is a noise (`NOTICED`, 0.25); two is undeniable (`UNDENIABLE`,
+   * 0.6), and two is what a full bar buys. Nothing above that is reachable.
+   */
   pressure: number;
   /** The belonging the player is currently holding their attention on, if any. */
   resonance: Resonance | null;

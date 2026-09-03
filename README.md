@@ -1,5 +1,9 @@
 # THE WELL — narrative state prototype
 
+> **New here?** `docs/DEMO.md` defines the vocabulary and separates what is
+> built (the demo, `src/`) from what is only written down (the full game,
+> `docs/story/`).
+
 The story and simulation layer of [the pitch](docs/PITCH.md), with no 3D in it.
 The point of this repo right now is to answer one question before any art exists:
 

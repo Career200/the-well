@@ -165,6 +165,20 @@ const SETTLE_SPENT = 0.2;
  */
 const REST = 0.015;
 
+/**
+ * Charge at which the room is still open. The corners are the one thing here
+ * that *is* a reading of how much is left: above this a composed presence sees
+ * clear to the walls, and below it the room closes in, full at nothing left.
+ * A level, not a cycle — it only moves when the charge does, and it stays.
+ */
+const COMPOSED = 0.7;
+/**
+ * How much of the room still left open a single push may close for a moment.
+ * The press already shows up in the level, permanently, as the charge it cost;
+ * this is only the flinch on top, and it is the part that fades.
+ */
+const KICK_SHARE = 0.35;
+
 /** Samples across the waterline. Enough that the chop reads as water. */
 const SURFACE_SAMPLES = 56;
 
@@ -815,9 +829,15 @@ export function makeShaft(host: HTMLElement, opts: ShaftOptions = {}): Shaft {
     }
 
     svg.classList.toggle('pressing', state.pressing);
-    // The corners answer first and loudest: something is wrong with the room,
-    // never a reading of how much is left.
-    corners.style.opacity = String(clamp01(agitation * (state.pressing ? 1 : 0.72)));
+    // The corners are the charge, held rather than played: they close in as the
+    // presence thins and stay closed until stillness buys the room back. A push
+    // lands here twice — once as the charge it costs, which does not come back
+    // on its own, and once as a flinch above that, which does. The flinch is
+    // taken out of the headroom that is left, so a room already closed to the
+    // walls has nothing further to give and the two never fight over the top.
+    const lack = clamp01((COMPOSED - state.charge) / COMPOSED);
+    const flinch = agitation * (state.pressing ? 1 : 0.72) * KICK_SHARE;
+    corners.style.opacity = String(clamp01(lack + flinch * (1 - lack)));
 
     // One filter, one opacity, on everything at once: the sky is no more
     // available to the presence than the silt is. Lucidity adds the haze —

@@ -22,7 +22,7 @@ export const pack: ContentPack = {
     "Footsteps on the track, rushed ones. In a second, the sound disappears.",
     "The rope moves in its groove above you. It is only the wind.",
     "The light blinks and goes yellow along one edge. That is the whole of this afternoon.",
-    "Something small falls in and does not come up the surface of the water. The only thing today, and not worth watching."
+    "Something small falls in. The only thing today, and not worth watching."
   ],
 
   readout: {
@@ -33,7 +33,7 @@ export const pack: ContentPack = {
       tragedy:
         "There are flowers on the rim for a long time. When they die, new ones appear.",
       danger:
-        "You hear fotsteps approach, then nothing, and then they leave. They didn't date get closer."
+        "You hear footsteps approach, then nothing, and then they leave. They didn't dare get closer."
     },
     attention: [
       "Three people came up to the rim today. One of them drew water.",

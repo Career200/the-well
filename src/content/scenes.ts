@@ -1,4 +1,4 @@
-import type { Scene } from '../core/scene.js';
+import type { Outcome, Scene } from '../core/scene.js';
 import { notoriety } from '../core/types.js';
 import type { Emotion, PersonId, WorldState } from '../core/types.js';
 
@@ -10,11 +10,14 @@ const NOTICED = 0.25;
 const UNDENIABLE = 0.6;
 
 /**
- * A coin, fixed for the length of a run. Off the seed rather than the rng:
- * `requires` is a pure predicate called every turn and on probe worlds, so a
- * fresh roll would re-flip until it passed.
+ * A coin fixed for the length of a run.
  */
 const coin = (seed: number): boolean => ((Math.imul(seed ^ 0x9e3779b9, 0x85ebca6b) >>> 16) & 1) === 1;
+
+const NOTHING_CONCLUSIVE: Pick<Outcome, 'text' | 'effects'> = {
+  text: () => 'Silt, says the lamp. Silt and old water and a village’s worth of dropped things. They go home slightly ashamed of themselves, which will not last.',
+  effects: () => [{ kind: 'belief', belief: 'mystery', delta: 0.1 }],
+};
 
 export const scenes: Scene[] = [
   {
@@ -195,6 +198,12 @@ export const scenes: Scene[] = [
     ],
     outcomes: [
       {
+        id: 'under-the-coat',
+        when: (_s, ctx) => ctx.resonance?.object === 'coat',
+        text: NOTHING_CONCLUSIVE.text,
+        effects: NOTHING_CONCLUSIVE.effects,
+      },
+      {
         id: 'seal-it',
         when: (s, ctx) => s.beliefs.haunted > 0.5 || ctx.pressure >= UNDENIABLE,
         text: () => 'The lamp goes up fast. The argument that follows is short. Before dark there is a board over the sky, and stones on the board.',
@@ -206,7 +215,7 @@ export const scenes: Scene[] = [
       },
       {
         id: 'a-body',
-        when: (s) => s.objects.coat?.discovered === true || s.objects.ring?.discovered === true,
+        when: (s) => s.objects.coat?.discovered === true && s.objects.ring?.discovered === true,
         text: () => 'The lamp holds steady a long moment. Then the woman says a name out loud, and the sound the village makes is not fear. It is arithmetic. They are counting backwards to a night they all remember.',
         effects: () => [
           { kind: 'belief', belief: 'tragedy', delta: 0.35 },
@@ -219,8 +228,8 @@ export const scenes: Scene[] = [
       {
         id: 'inconclusive',
         when: () => true,
-        text: () => 'Silt, says the lamp. Silt and old water and a village’s worth of dropped things. They go home slightly ashamed of themselves, which will not last.',
-        effects: () => [{ kind: 'belief', belief: 'mystery', delta: 0.1 }],
+        text: NOTHING_CONCLUSIVE.text,
+        effects: NOTHING_CONCLUSIVE.effects,
       },
     ],
   },
@@ -233,21 +242,18 @@ export const scenes: Scene[] = [
     requires: (s) =>
       s.history.length >= 4 &&
       notoriety(s) > 0.6 &&
-      // EXPERIMENT: unclear whether boarding the well should stop this or only
-      // make it a nuisance — the beats already have them taking the boards
-      // off. Half the villages do, decided once per run. Delete when we know.
       (!s.flags['well-covered'] || coin(s.seed)),
     weight: () => 6,
     beats: [
-      { text: () => 'Two sets of feet, and one of them is not walking on purpose.' },
+      { text: () => 'Four sets of feet, and one of them is not walking on purpose.' },
       { text: () => 'Boards coming off. Voices low and fast and practical, the voices of men doing a job they have talked themselves into.' },
       { text: () => 'The sky opens. Something is held over it that is still arguing.' },
     ],
     outcomes: [
       {
         id: 'stopped',
-        when: (_s, ctx) => ctx.pressure >= UNDENIABLE,
-        text: () => 'You come up the wall as everything you have. What is dropped is not the stranger. They go over the field without their lamp and the stranger lies at the rim making a sound you have not heard since you had lungs.',
+        when: (s, ctx) => (ctx.pressure >= UNDENIABLE && s.beliefs.haunted > 0.6),
+        text: () => 'As the boards come off, you come up the wall with everything you have. They drop something - not the stranger. The lamp light disappears and the stranger stays at the rim. You know that from the sound he makes, a sound you have not heard since you had lungs.',
         effects: () => [
           { kind: 'belief', belief: 'haunted', delta: 0.4 },
           { kind: 'emotion', person: 'tomas', emotion: 'fear', delta: 0.5 },

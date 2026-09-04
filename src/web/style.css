@@ -672,9 +672,11 @@ button[data-feel='cold'] { color: var(--spent); border-color: var(--edge); }
   50% { color: #8a7654; opacity: 1; }
 }
 
-/* The corners answering the water. A hint that the room is wrong — never a
-   reading of how much is left, and it is the only thing that lands on the
-   very first press, while the shaft itself is still too dark to read. */
+/* The corners reading the charge: the room closing in as the presence thins,
+   clear again only when stillness has bought it back. It is also the only
+   thing that lands on the very first press, while the shaft itself is still
+   too dark to read. The transition is what makes it a level and not a flicker
+   — every step of charge glides rather than cutting. */
 #shaft .agitation {
   position: absolute;
   inset: 0;

@@ -8,8 +8,9 @@
  * a phone, so anything needed while watching stays on the bar.
  */
 import './shaft-debug.css';
-import { makeShaft, PLACES } from './visuals.js';
-import type { PlaceId, ShaftState } from './visuals.js';
+import { PLACES } from './shaft.js';
+import type { PlaceId, Shaft, ShaftFactory, ShaftState } from './shaft.js';
+import { makeShaft } from './visuals.js';
 
 const host = document.getElementById('shaft') as HTMLElement;
 const form = document.getElementById('controls') as HTMLFormElement;
@@ -51,18 +52,44 @@ const state: ShaftState = {
 
 const signals = new Set<PlaceId>();
 
-const shaft = makeShaft(host, {
-  floor: () => window.innerHeight,
-  onPlace: (id) => note(`asked: the ${id}`),
-});
-
 // Every place is resolved up front; the staged arrival is the game's business.
 const resolvedNow = new Set<PlaceId>(PLACES);
-for (const id of PLACES) shaft.resolve(id);
+
+/**
+ * Which picture is drawn, in the shape the motion setting takes: off is the
+ * flat diagram, on is the camera. Both entries build the same renderer, so the
+ * swap runs against a picture already known to be right.
+ */
+type Motion = 'off' | 'on';
+const RENDERERS: Record<Motion, ShaftFactory> = { off: makeShaft, on: makeShaft };
+
+let motion: Motion = 'off';
+let shaft = build();
+
+/** A renderer, with whatever the harness has resolved replayed onto it. */
+function build(): Shaft {
+  const made = RENDERERS[motion](host, {
+    floor: () => window.innerHeight,
+    onPlace: (id) => note(`asked: the ${id}`),
+  });
+  for (const id of resolvedNow) made.resolve(id);
+  return made;
+}
 
 const sync = (): void => {
   shaft.update({ ...state, signals: [...signals] });
 };
+
+// The swap tears the old picture down and replays the state onto the new one,
+// so flipping mid-scene keeps the same moment on screen.
+const motionButton = barButton(`motion: ${motion}`, () => {
+  motion = motion === 'off' ? 'on' : 'off';
+  shaft.destroy();
+  shaft = build();
+  sync();
+  motionButton.textContent = `motion: ${motion}`;
+  note(`${motion === 'off' ? 'the flat diagram' : 'the camera'}`);
+});
 
 // ---- game events ----------------------------------------------------------
 

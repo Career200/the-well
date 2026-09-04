@@ -14,42 +14,11 @@
  * DOM; the clock calls it while the water is unsettled.
  */
 
-const NS = 'http://www.w3.org/2000/svg';
-
-const svgEl = <K extends keyof SVGElementTagNameMap>(name: K): SVGElementTagNameMap[K] =>
-  document.createElementNS(NS, name);
-
-const attrs = (el: Element, values: Record<string, string | number>): void => {
-  for (const [key, value] of Object.entries(values)) el.setAttribute(key, String(value));
-};
-
-const clamp01 = (n: number): number => (n < 0 ? 0 : n > 1 ? 1 : n);
-const lerp = (a: number, b: number, t: number): number => a + (b - a) * t;
-
-/** Deterministic per-dot noise, 0 to 1. */
-const hash = (x: number, y: number): number => {
-  const n = Math.sin(x * 127.1 + y * 311.7) * 43758.5453;
-  return n - Math.floor(n);
-};
-
-/** The four places with geometry to click. The cold has no region. */
-export const PLACES = ['sky', 'walls', 'water', 'silt'] as const;
-export type PlaceId = (typeof PLACES)[number];
-
-/**
- * Lucidity quantised to `lucidityPerDiscovery`, so one discovery is one step.
- * Every table below is indexed by it.
- */
-const STEPS = 5;
-const stepOf = (lucidity: number): number => Math.round(clamp01(lucidity) * (STEPS - 1));
-
-/** Halftone dot spacing, px. Larger is coarser and cheaper to draw. */
-const DOT_SPACING = [14, 13, 12, 11, 10] as const;
-/** Joints across the far wall, and courses of stone between rim and floor. */
-const WALLS = [5, 7, 9, 11, 13] as const;
-const COURSES = [4, 6, 8, 10, 12] as const;
-/** Blur over the whole picture, px. Zero at full lucidity. */
-const HAZE = [2.6, 1.8, 1.15, 0.5, 0] as const;
+import { makeClock } from './clock.js';
+import { COURSES, DOT_SPACING, HAZE, stepOf, WALLS } from './grain.js';
+import { PLACES } from './shaft.js';
+import type { Bands, PlaceId, Shaft, ShaftOptions, ShaftState } from './shaft.js';
+import { attrs, clamp01, gradient, hash, lerp, svgEl } from './svg.js';
 
 /**
  * Flatness of a cross-section, `ry / rx`. Must be constant at every depth, or
@@ -112,19 +81,6 @@ const WATER_BAND_VS_HEIGHT = 0.17;
 const NARROW = 640;
 const MIN_SILT_BAND = 56;
 
-/** Clock period, ms. ~5fps; the stepped look suits the halftone. */
-const TICK_MS = 190;
-/** Ripple travel per tick, scaled so a pass crosses in about 3.5s. */
-const PHASE_PER_TICK = 0.33;
-/** Agitation a push sets, interpolated on charge. */
-const KICK_CALM = 0.45;
-const KICK_SPENT = 1;
-/** Fraction of the remaining agitation a tick takes: ~1s calm, ~3s spent. */
-const SETTLE_CALM = 0.4;
-const SETTLE_SPENT = 0.2;
-/** Floor for the settle, so the exponential terminates and the clock stops. */
-const REST = 0.015;
-
 /** Charge above which the corners stay open. */
 const COMPOSED = 0.7;
 /** Share of the corners' remaining headroom one push may take. */
@@ -132,76 +88,6 @@ const KICK_SHARE = 0.35;
 
 /** Samples across the waterline. */
 const SURFACE_SAMPLES = 56;
-
-export interface ShaftState {
-  /** Opacity of the whole picture, 0 to 1. Not the per-place reveal. */
-  visibility: number;
-  /** Grain of the picture, quantised by `stepOf`. */
-  lucidity: number;
-  /** Somebody is at the rim. */
-  occupied: boolean;
-  /** How much of the light the figure keeps out, 0 to 1. */
-  occlusion: number;
-  /** Leaving, holding the pose. Runs with `occupied` already false. */
-  leaving: boolean;
-  /** How far the figure has drawn back: 0 over the rim, 2 nearly gone. */
-  recoil: 0 | 1 | 2;
-  /**
-   * The belonging reaching for them. Written as `data-subject-id`, which is
-   * where the stylesheet keys the hue map. Says which object, not whether it
-   * landed.
-   */
-  resonating: string | null;
-  /**
-   * How much of it landed, 0 to 1: the belonging's affinity for whoever is up
-   * there, times the charge it had left. A belonging nobody up there cares
-   * about is near 0 and the figure barely moves.
-   */
-  reach: number;
-  /** Presence charge. Full is glass; empty never settles. */
-  charge: number;
-  /** This beat was a push. */
-  pressing: boolean;
-  /** Beat counter, used only to detect a new push. */
-  turn: number;
-  /** Places with something to say. They signal until asked. */
-  signals: readonly PlaceId[];
-  /** Whether places accept clicks. False in beat zero and in a scene. */
-  asking: boolean;
-}
-
-/** Where the picture leaves room for words, in viewport px. */
-export interface Bands {
-  /** Bottom edge of the rim, coin and all. */
-  skyBottom: number;
-  /** The waterline. Text must stay above it. */
-  waterTop: number;
-  /** The near edge of the floor. */
-  siltTop: number;
-}
-
-export interface Shaft {
-  update(state: ShaftState): void;
-  bands(): Bands;
-  /**
-   * A place coming out of the dark. Outside `update` because it is timed to
-   * the narration, not to the state: the client calls it as the line about
-   * that place is read. Idempotent; `on = false` is for the debug harness.
-   */
-  resolve(id: PlaceId, on?: boolean): void;
-  /** A spike on the corners: the presence could not afford what was clicked. */
-  flash(): void;
-  /** The figure surfaces and goes back out inside one beat. The coat's hiding. */
-  withdraw(): void;
-}
-
-export interface ShaftOptions {
-  onLayout?: (bands: Bands) => void;
-  /** Top of the controls, px. On narrow screens the floor sits against it. */
-  floor?: () => number;
-  /** A place was clicked. The client decides whether that is allowed. */
-  onPlace?: (id: PlaceId) => void;
-}
 
 interface Dot {
   el: SVGRectElement;
@@ -224,23 +110,6 @@ interface Surface {
   rx: number;
   ry: number;
 }
-
-const gradient = (
-  id: string,
-  kind: 'radialGradient' | 'linearGradient',
-  stops: readonly (readonly [string, string, number])[],
-  box?: Record<string, string | number>,
-): SVGElement => {
-  const grad = svgEl(kind);
-  grad.id = id;
-  if (box) attrs(grad, box);
-  for (const [offset, color, opacity] of stops) {
-    const stop = svgEl('stop');
-    attrs(stop, { offset, 'stop-color': color, 'stop-opacity': opacity });
-    grad.append(stop);
-  }
-  return grad;
-};
 
 export function makeShaft(host: HTMLElement, opts: ShaftOptions = {}): Shaft {
   const svg = svgEl('svg');
@@ -420,13 +289,16 @@ export function makeShaft(host: HTMLElement, opts: ShaftOptions = {}): Shaft {
   let surface: Surface = { cx: 0, cy: 0, rx: 0, ry: 0 };
   /** Which grain the picture is currently built at. A step rebuilds it. */
   let grain = -1;
-  /** Ripple travel, advanced only by the clock. */
-  let phase = 0;
-  /** Current unsettledness, 0 to 1, eased to 0 per tick. */
-  let agitation = 0;
   let pressedAt = -1;
   /** Last waterline written, so a calm surface is not re-pathed every tick. */
   let brokenBy = -1;
+
+  /** One-shot class timers, cleared on `destroy` so neither outlives the host. */
+  let flashTimer: ReturnType<typeof setTimeout> | undefined;
+  let withdrawTimer: ReturnType<typeof setTimeout> | undefined;
+
+  // Runs only while the water is unsettled; 
+  const clock = makeClock({ draw, charge: () => last?.charge ?? 1 });
 
   const place = (button: HTMLButtonElement, top: number, bottom: number): void => {
     button.style.top = `${Math.max(0, top)}px`;
@@ -684,12 +556,12 @@ export function makeShaft(host: HTMLElement, opts: ShaftOptions = {}): Shaft {
   function breakSurface(): void {
     // A calm surface is the same path every tick, so only re-walk it when the
     // number that shapes it has moved.
-    const shaped = Math.round(agitation * 40) / 40;
+    const shaped = Math.round(clock.agitation * 40) / 40;
     if (shaped === brokenBy && shaped === 0) return;
     brokenBy = shaped;
 
     const { cx, cy, rx, ry } = surface;
-    const chop = agitation * 7;
+    const chop = clock.agitation * 7;
     let d = '';
     for (let i = 0; i < SURFACE_SAMPLES; i++) {
       const angle = Math.PI + (i / (SURFACE_SAMPLES - 1)) * Math.PI;
@@ -698,7 +570,7 @@ export function makeShaft(host: HTMLElement, opts: ShaftOptions = {}): Shaft {
       // surface meets the stone.
       const held = Math.abs(Math.sin(angle));
       const wave =
-        Math.sin(angle * 7 - phase * 1.6) * 0.7 + Math.sin(angle * 13 + phase * 0.9) * 0.3;
+        Math.sin(angle * 7 - clock.phase * 1.6) * 0.7 + Math.sin(angle * 13 + clock.phase * 0.9) * 0.3;
       const y = cy + ry * Math.sin(angle) + wave * chop * held;
       d += `${i === 0 ? 'M' : 'L'} ${x.toFixed(1)} ${y.toFixed(1)} `;
     }
@@ -713,11 +585,11 @@ export function makeShaft(host: HTMLElement, opts: ShaftOptions = {}): Shaft {
     breakSurface();
 
     for (const dot of dots) {
-      const ring = Math.sin(dot.dist * 0.055 - phase);
-      const swell = 1 + ring * 0.72 * agitation;
-      const broken = (dot.jitter - 0.5) * 3.2 * agitation * agitation;
+      const ring = Math.sin(dot.dist * 0.055 - clock.phase);
+      const swell = 1 + ring * 0.72 * clock.agitation;
+      const broken = (dot.jitter - 0.5) * 3.2 * clock.agitation * clock.agitation;
       const size = Math.max(0, Math.round((dot.base * swell + broken) * 2) / 2);
-      const drift = Math.round(ring * agitation * 3.6 * 2) / 2;
+      const drift = Math.round(ring * clock.agitation * 3.6 * 2) / 2;
       // A tick only pays for dots that actually moved.
       if (size === dot.size && drift === dot.drift) continue;
       dot.size = size;
@@ -732,8 +604,8 @@ export function makeShaft(host: HTMLElement, opts: ShaftOptions = {}): Shaft {
 
     // The silt stirs with the water, at a lower frequency and amplitude.
     for (const dot of silt) {
-      const heave = Math.sin(dot.dist * 0.02 - phase * 0.35 + dot.jitter * 6.2);
-      const size = Math.max(0, Math.round(dot.base * (1 + heave * 0.14 * agitation) * 2) / 2);
+      const heave = Math.sin(dot.dist * 0.02 - clock.phase * 0.35 + dot.jitter * 6.2);
+      const size = Math.max(0, Math.round(dot.base * (1 + heave * 0.14 * clock.agitation) * 2) / 2);
       if (size === dot.size) continue;
       dot.size = size;
       attrs(dot.el, { x: dot.x - size / 2, y: dot.y - size / 2, width: size, height: size });
@@ -743,7 +615,7 @@ export function makeShaft(host: HTMLElement, opts: ShaftOptions = {}): Shaft {
     // A level from the charge plus a transient flinch. The flinch takes only
     // the headroom the level leaves, so the sum stays inside 1.
     const lack = clamp01((COMPOSED - state.charge) / COMPOSED);
-    const flinch = agitation * (state.pressing ? 1 : 0.72) * KICK_SHARE;
+    const flinch = clock.agitation * (state.pressing ? 1 : 0.72) * KICK_SHARE;
     corners.style.opacity = String(clamp01(lack + flinch * (1 - lack)));
 
     // The light a body over the hole keeps out. The halo and the coin lose
@@ -790,43 +662,12 @@ export function makeShaft(host: HTMLElement, opts: ShaftOptions = {}): Shaft {
     }
   }
 
-  // ---- the clock ---------------------------------------------------------
-  // Runs only while the water is unsettled, and stops for a hidden tab.
-  //
-  // `prefers-reduced-motion` is not read: every animation here is under a few
-  // px, with no travel, parallax or sudden onset.
-  let timer: ReturnType<typeof setInterval> | undefined;
-
-  /** Kick size and settle rate, both interpolated on how spent the charge is. */
-  const spent = (): number => (last ? 1 - clamp01(last.charge) : 0);
-  const kick = (): number => lerp(KICK_CALM, KICK_SPENT, spent());
-  const settle = (): number => lerp(SETTLE_CALM, SETTLE_SPENT, spent());
-
-  function beat(): void {
-    phase += PHASE_PER_TICK;
-    agitation -= agitation * settle();
-    if (agitation < REST) agitation = 0;
-    draw();
-    // At rest there is nothing to draw, so the clock stops itself.
-    if (agitation === 0) reclock();
-  }
-
-  function reclock(): void {
-    if (timer !== undefined) {
-      clearInterval(timer);
-      timer = undefined;
-    }
-    if (!document.hidden && agitation > 0) timer = setInterval(beat, TICK_MS);
-  }
-
-  document.addEventListener('visibilitychange', reclock);
-
   // Places start unresolved; the client reveals them one at a time.
   for (const id of PLACES) resolve(id, false);
 
   layout();
-  new ResizeObserver(layout).observe(host);
-  reclock();
+  const observer = new ResizeObserver(layout);
+  observer.observe(host);
 
   return {
     resolve,
@@ -835,24 +676,32 @@ export function makeShaft(host: HTMLElement, opts: ShaftOptions = {}): Shaft {
       const struck = state.pressing && state.turn !== pressedAt;
       if (struck) pressedAt = state.turn;
       last = state;
-      if (struck) agitation = clamp01(kick());
+      if (struck) clock.strike();
       // A step of lucidity changes the grain, which means a full rebuild.
       if (stepOf(state.lucidity) !== grain) layout();
       else draw();
-      if (struck) reclock();
     },
     bands: () => bands,
     flash(): void {
       corners.classList.remove('flash');
       void corners.offsetWidth; // restart it even if one is already running
       corners.classList.add('flash');
-      setTimeout(() => corners.classList.remove('flash'), 1100);
+      clearTimeout(flashTimer);
+      flashTimer = setTimeout(() => corners.classList.remove('flash'), 1100);
     },
     withdraw(): void {
       figure.classList.remove('withdrawing');
       void (figure as unknown as HTMLElement).offsetWidth; // restart a running one
       figure.classList.add('withdrawing');
-      setTimeout(() => figure.classList.remove('withdrawing'), 2600);
+      clearTimeout(withdrawTimer);
+      withdrawTimer = setTimeout(() => figure.classList.remove('withdrawing'), 2600);
+    },
+    destroy(): void {
+      observer.disconnect();
+      clock.stop();
+      clearTimeout(flashTimer);
+      clearTimeout(withdrawTimer);
+      host.replaceChildren();
     },
   };
 }

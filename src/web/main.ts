@@ -5,8 +5,9 @@ import { pack } from '../content/index.js';
 import { NOTICED, UNDENIABLE } from '../content/scenes.js';
 import { feelBand, feelOf, water } from '../core/readout.js';
 import type { LineKind, NarrationLine } from '../core/types.js';
-import { makeShaft, PLACES } from './visuals.js';
-import type { Bands, PlaceId } from './visuals.js';
+import { makeShaft } from './visuals.js';
+import { PLACES } from './shaft.js';
+import type { Bands, PlaceId } from './shaft.js';
 import { initAnalytics } from './analytics.js';
 import type { DevPanel } from './dev.js';
 

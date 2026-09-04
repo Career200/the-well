@@ -19,3 +19,17 @@ export const COURSES = [4, 6, 8, 10, 12] as const;
 
 /** Blur over the whole picture, px. Zero at full lucidity. */
 export const HAZE = [2.6, 1.8, 1.15, 0.5, 0] as const;
+
+/**
+ * Points per polyline under a curvilinear lens, which bends every straight
+ * edge. Low counts draw the bowing faceted and high counts draw it smooth.
+ */
+export const RING_STEPS = [32, 48, 64, 96, 128] as const;
+export const JOINT_STEPS = [12, 18, 24, 36, 48] as const;
+
+/**
+ * Rings of grain across the floor, from the axis to the wall. The count along
+ * each ring follows from its circumference, so the scatter is even by area and
+ * this is the only dial.
+ */
+export const SILT_RINGS = [7, 9, 11, 14, 17] as const;

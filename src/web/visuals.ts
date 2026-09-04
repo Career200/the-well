@@ -14,9 +14,9 @@
  * DOM; the clock calls it while the water is unsettled.
  */
 
+import { makeChrome, veil } from './chrome.js';
 import { makeClock } from './clock.js';
-import { COURSES, DOT_SPACING, HAZE, stepOf, WALLS } from './grain.js';
-import { PLACES } from './shaft.js';
+import { COURSES, DOT_SPACING, stepOf, WALLS } from './grain.js';
 import type { Bands, PlaceId, Shaft, ShaftOptions, ShaftState } from './shaft.js';
 import { attrs, clamp01, gradient, hash, lerp, svgEl } from './svg.js';
 
@@ -80,11 +80,6 @@ const WATER_BAND_VS_HEIGHT = 0.17;
 /** Below `NARROW`, the floor lifts until `MIN_SILT_BAND` of it clears the controls. */
 const NARROW = 640;
 const MIN_SILT_BAND = 56;
-
-/** Charge above which the corners stay open. */
-const COMPOSED = 0.7;
-/** Share of the corners' remaining headroom one push may take. */
-const KICK_SHARE = 0.35;
 
 /** Samples across the waterline. */
 const SURFACE_SAMPLES = 56;
@@ -253,33 +248,9 @@ export function makeShaft(host: HTMLElement, opts: ShaftOptions = {}): Shaft {
 
   svg.append(defs, wallsG, waterG, siltG, skyG);
 
-  // Outside the SVG, so it reads at any `visibility`.
-  const corners = document.createElement('div');
-  corners.className = 'agitation';
-
-  // Tap targets: transparent full-width bands stacked over the picture.
-  const regions = document.createElement('div');
-  regions.className = 'places';
   const shapes: Record<PlaceId, SVGGElement> = { sky: skyG, walls: wallsG, water: waterG, silt: siltG };
-  const buttons = {} as Record<PlaceId, HTMLButtonElement>;
-  for (const id of PLACES) {
-    const button = document.createElement('button');
-    button.type = 'button';
-    button.className = 'place';
-    button.dataset['place'] = id;
-    button.setAttribute('aria-label', `the ${id}`);
-    button.onclick = () => opts.onPlace?.(id);
-    buttons[id] = button;
-    regions.append(button);
-  }
-
-  host.replaceChildren(svg, corners, regions);
-
-  function resolve(id: PlaceId, on = true): void {
-    shapes[id].classList.toggle('resolved', on);
-    // Unresolved places are not targets and are out of the a11y tree.
-    buttons[id].hidden = !on;
-  }
+  const chrome = makeChrome(shapes, opts.onPlace);
+  host.replaceChildren(svg, chrome.corners, chrome.regions);
 
   let dots: Dot[] = [];
   let silt: Dot[] = [];
@@ -289,21 +260,14 @@ export function makeShaft(host: HTMLElement, opts: ShaftOptions = {}): Shaft {
   let surface: Surface = { cx: 0, cy: 0, rx: 0, ry: 0 };
   /** Which grain the picture is currently built at. A step rebuilds it. */
   let grain = -1;
-  let pressedAt = -1;
   /** Last waterline written, so a calm surface is not re-pathed every tick. */
   let brokenBy = -1;
 
-  /** One-shot class timers, cleared on `destroy` so neither outlives the host. */
-  let flashTimer: ReturnType<typeof setTimeout> | undefined;
+  /** Cleared on `destroy` so the class cannot outlive the host. */
   let withdrawTimer: ReturnType<typeof setTimeout> | undefined;
 
   // Runs only while the water is unsettled; 
   const clock = makeClock({ draw, charge: () => last?.charge ?? 1 });
-
-  const place = (button: HTMLButtonElement, top: number, bottom: number): void => {
-    button.style.top = `${Math.max(0, top)}px`;
-    button.style.height = `${Math.max(0, bottom - top)}px`;
-  };
 
   function layout(): void {
     const w = host.clientWidth || 800;
@@ -541,11 +505,7 @@ export function makeShaft(host: HTMLElement, opts: ShaftOptions = {}): Shaft {
 
     bands = { skyBottom: rimCy + rimRy, waterTop, siltTop };
 
-    // The regions, in the same order down the picture.
-    place(buttons.sky, 0, bands.skyBottom);
-    place(buttons.walls, bands.skyBottom, waterTop);
-    place(buttons.water, waterTop, siltTop);
-    place(buttons.silt, siltTop, h);
+    chrome.stack(bands, h);
 
     brokenBy = -1;
     if (last) draw();
@@ -611,12 +571,7 @@ export function makeShaft(host: HTMLElement, opts: ShaftOptions = {}): Shaft {
       attrs(dot.el, { x: dot.x - size / 2, y: dot.y - size / 2, width: size, height: size });
     }
 
-    svg.classList.toggle('pressing', state.pressing);
-    // A level from the charge plus a transient flinch. The flinch takes only
-    // the headroom the level leaves, so the sum stays inside 1.
-    const lack = clamp01((COMPOSED - state.charge) / COMPOSED);
-    const flinch = clock.agitation * (state.pressing ? 1 : 0.72) * KICK_SHARE;
-    corners.style.opacity = String(clamp01(lack + flinch * (1 - lack)));
+    chrome.agitate(state, clock.agitation);
 
     // The light a body over the hole keeps out. The halo and the coin lose
     // opacity; the shaft itself loses brightness, since the hole is the only
@@ -625,13 +580,7 @@ export function makeShaft(host: HTMLElement, opts: ShaftOptions = {}): Shaft {
     halo.style.opacity = String(1 - shut * OCCLUDED.halo);
     coin.style.opacity = String(1 - shut * OCCLUDED.coin);
 
-    // One filter and one opacity for the whole picture; lucidity adds the haze.
-    const seen = clamp01(state.visibility);
-    const eased = seen * seen * (3 - 2 * seen);
-    svg.style.opacity = String(0.05 + eased * 0.95);
-    const haze = HAZE[stepOf(state.lucidity)]!;
-    const bright = (0.4 + eased * 0.6) * (1 - shut * OCCLUDED.room);
-    svg.style.filter = `brightness(${bright.toFixed(3)})${haze > 0 ? ` blur(${haze.toFixed(2)}px)` : ''}`;
+    veil(svg, state, shut * OCCLUDED.room);
 
     figure.classList.toggle('there', state.occupied);
     figure.classList.toggle('leaving', state.leaving);
@@ -653,42 +602,24 @@ export function makeShaft(host: HTMLElement, opts: ShaftOptions = {}): Shaft {
     if (state.resonating) figure.dataset['subjectId'] = state.resonating;
     else delete figure.dataset['subjectId'];
 
-    for (const id of PLACES) {
-      const lit = state.signals.includes(id);
-      shapes[id].classList.toggle('signalling', lit);
-      // Presence is `resolve`'s business; this only gates asking.
-      buttons[id].disabled = !state.asking;
-      buttons[id].classList.toggle('signalling', lit);
-    }
+    chrome.places(state);
   }
-
-  // Places start unresolved; the client reveals them one at a time.
-  for (const id of PLACES) resolve(id, false);
 
   layout();
   const observer = new ResizeObserver(layout);
   observer.observe(host);
 
   return {
-    resolve,
+    resolve: chrome.resolve,
     update(state: ShaftState): void {
-      // Keyed to the turn, so one push is one kick.
-      const struck = state.pressing && state.turn !== pressedAt;
-      if (struck) pressedAt = state.turn;
       last = state;
-      if (struck) clock.strike();
+      if (state.pressing) clock.strike(state.turn);
       // A step of lucidity changes the grain, which means a full rebuild.
       if (stepOf(state.lucidity) !== grain) layout();
       else draw();
     },
     bands: () => bands,
-    flash(): void {
-      corners.classList.remove('flash');
-      void corners.offsetWidth; // restart it even if one is already running
-      corners.classList.add('flash');
-      clearTimeout(flashTimer);
-      flashTimer = setTimeout(() => corners.classList.remove('flash'), 1100);
-    },
+    flash: chrome.flash,
     withdraw(): void {
       figure.classList.remove('withdrawing');
       void (figure as unknown as HTMLElement).offsetWidth; // restart a running one
@@ -699,7 +630,7 @@ export function makeShaft(host: HTMLElement, opts: ShaftOptions = {}): Shaft {
     destroy(): void {
       observer.disconnect();
       clock.stop();
-      clearTimeout(flashTimer);
+      chrome.destroy();
       clearTimeout(withdrawTimer);
       host.replaceChildren();
     },

@@ -38,7 +38,7 @@ from the fisheye panel of `projections.html`:
 | eye, above silt  | 1.5      | authored; a framing dial      |
 | back to wall     | 0.5–1    | authored; a framing dial      |
 | pitch            | 27°      | pose                          |
-| fov, vertical    | 145°     | pose                          |
+| fov, vertical    | 132°     | pose                          |
 
 Eye height reads cleanly as a compositional dial and is expected to move during
 development. At these values the resting surface sits at 1.05 and the eye at 1.5,
@@ -65,10 +65,10 @@ needs a cap or it takes the reading band permanently rather than temporarily.
 
 ### Lucidity
 
-One dial, two effects, both already in `visuals.ts` as arrays indexed by
-`stepOf`. Blur (`HAZE`) carries over unchanged. Detail (`DOT_SPACING`, `WALLS`,
-`COURSES`) gains a fourth axis under fisheye: **subdivision count.** Low lucidity
-draws the bowing faceted; high lucidity draws it smooth.
+One dial, every table indexed by `stepOf` in `grain.ts`. Blur (`HAZE`) and detail
+(`DOT_SPACING`, `WALLS`, `COURSES`) carry over. Under a curvilinear lens they are
+joined by **subdivision** — `RING_STEPS` and `JOINT_STEPS`, which decide whether
+the bowing draws faceted or smooth — and by `SILT_RINGS` for the floor scatter.
 
 Subdivision is also the cost dial, so the expensive frame is the late-run one and
 the opening is cheap.
@@ -81,10 +81,15 @@ the opening is cheap.
 Halftone dots stay `<rect>`; their centres are projected and sub-dot distortion
 is ignored.
 
-Carried over unchanged: the halftone dot field and its selective update, the
-`place-shape` groups, the CSS state classes (`resolved`, `signalling`,
-`withdrawing`, `pressing`, `receding`), the `data-subject-id` hue map, the
-`.agitation` corners outside the SVG, and the per-place `<button>` overlay.
+Carried over unchanged: the selective dot update, the `place-shape` groups, the
+CSS state classes (`resolved`, `signalling`, `withdrawing`, `pressing`,
+`receding`), the `data-subject-id` hue map, the `.agitation` corners outside the
+SVG, and the per-place `<button>` overlay.
+
+The floor grain is a polar scatter on the plane at `y = 0`, culled to the frame,
+sized from how many px the lens puts on one cell at that distance. Whether the
+water's grain is world-space too, or a fixed screen-space print, is decided in
+step E.
 
 One forward projection serves three consumers: the drawn geometry, the tap
 regions, and the layout numbers. Tap regions and bands are derived by projecting
@@ -197,39 +202,57 @@ purpose, for as long as it lasts.
 
 ---
 
+## Standing
+
+`web/projection.ts` holds the lens and the well as geometry, with no DOM and its
+own tests. `web/shaft-fisheye.ts` draws rim, waterline, silt edge, joints cut at
+the surface, courses, and the floor grain, at one held pose. `web/chrome.ts`
+holds what both pictures share — corners, tap targets, reveal, `veil` — and
+`web/clock.ts` the agitation. The motion selector in `shaft-debug.ts` swaps the
+two views; the camera is what it opens on.
+
+Provisional: `bands` is the screen extremes of the three rings, enough to stack
+the tap targets and nothing more.
+
+---
+
 ## Order
 
-**0. The motion setting.** The panel and the flag, against the current renderer,
-before any of the geometry. It is what makes the two views a permanent pair
-rather than a migration, and everything below lands behind it.
+**A. The sky, with its signal.** The opening as a filled region, the light
+through it, and the signal on it. The `sky-hole` clip takes the projected rim
+path in place of an ellipse; `sky-glow` needs `gradientUnits="userSpaceOnUse"`
+with its centre and radius read off that path; `--orbit-x` and `--orbit-y` come
+from the same extent, which is all the existing `signalling` rules need. The
+halo pooling under the hole waits — it is light on the upper wall and may want
+to be real rather than a screen-space ellipse. This stage is also what judges
+the rest pose: a rim cropped at the top does not read as a coin, and if it does
+not sit right the answer is the pitch, not the sky.
 
-**1. The projection in the harness.** Port panel 6 into a module and drive
-`shaft.html` from it with a static camera and no animation. This is where the
-subdivision counts get their real cost measured, where lucidity picks up its
-fourth axis, and where the well's dimensions get set against a phone-shaped
-frame.
+**B. Pitch, on scene start.** The camera becomes state the renderer holds rather
+than a constant it reads. Two things follow. `layout` splits into reprojecting
+the elements that exist and rebuilding the set, because an eased move cannot
+recreate every path and speck per frame. And `bands` starts moving per pose,
+which is where the tap regions and the reading band have to line up for real.
 
-**2. Bands and hit regions from the forward projection.** Derive the four tap
-regions and the layout numbers by projecting the three key rings per pose. Proves
-the tap model survives a moving camera without any change to the interaction
-model.
+**C. Field of view, with early cancel.** The same dial machinery as B, so the
+new work is an interruptible ease: a current pose, a target, and retargeting
+mid-move when the coat cuts a scene short. Pose timing hangs off the delay array
+`narrate()` returns, the way `hold` already times the figure. Narrowing the
+field straightens the bowing, so a push-in relaxes the well as well as closing
+on it.
 
-**3. The reading-band probe.** Fix the log to a strip and drift the current
-picture under it. Independent of everything above and the one result that can
-change the projection decision, so it does not wait for its turn.
+**D. The figure and its states.** `occupied`, `leaving`, `recoil`, and
+`resonating` with `reach`. Every anchor the flat picture takes from the rim's
+centre and radii is a projected point here — the body scaling about the rim's
+near edge, the head about its own chin. `withdraw` stops being a no-op.
 
-**4. The waterline as a level.** The rise on a push, the modifier growing with
-turns, the cap, and the grain headroom above the resting surface. Ends with the
-crossing: water over the eye, drawn over the band, and back down.
+**E. Water, and the push.** The grain in both modes, screen-space and
+world-space, switchable and then decided. Waves displace the ring's world `y`
+before projecting rather than bending a screen-space path. Then the level: the
+rise on a push, the modifier growing with turns, the cap, and the crossing past
+the eye. `Well` stops being a module constant and becomes a per-frame value.
 
-**5. The pose set.** Extend `projections.html` with a pose list, easing and a
-scrub. Six poses off `ShaftState` and `beatsLeft`, tuned there rather than in the
-game. Proves the vocabulary is small enough that scenes need no direction.
-
-**6. Timing against narration.** Hang poses off the `narrate()` delays and pace
-them against `STAGGER`. Proves the camera and the prose do not compete for the
-same seconds.
-
-**7. Parity.** Match the current renderer on `resolve`, `signalling`, the figure
-and its two levers, `withdraw`, `flash` and `receding`. The motion setting picks
-between them from there on.
+**Unplaced.** The reading-band probe, which is independent of all of the above
+and is still the one result that can invalidate the projection. Deriving `bands`
+properly. Parity against the flat picture on everything the motion selector
+switches between.

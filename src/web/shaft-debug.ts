@@ -10,6 +10,7 @@
 import './shaft-debug.css';
 import { PLACES } from './shaft.js';
 import type { PlaceId, Shaft, ShaftFactory, ShaftState } from './shaft.js';
+import { makeFisheyeShaft } from './shaft-fisheye.js';
 import { makeShaft } from './visuals.js';
 
 const host = document.getElementById('shaft') as HTMLElement;
@@ -57,13 +58,13 @@ const resolvedNow = new Set<PlaceId>(PLACES);
 
 /**
  * Which picture is drawn, in the shape the motion setting takes: off is the
- * flat diagram, on is the camera. Both entries build the same renderer, so the
- * swap runs against a picture already known to be right.
+ * flat diagram, on is the camera.
  */
 type Motion = 'off' | 'on';
-const RENDERERS: Record<Motion, ShaftFactory> = { off: makeShaft, on: makeShaft };
+const RENDERERS: Record<Motion, ShaftFactory> = { off: makeShaft, on: makeFisheyeShaft };
 
-let motion: Motion = 'off';
+// The camera is what the harness is for; the flat picture is the comparison.
+let motion: Motion = 'on';
 let shaft = build();
 
 /** A renderer, with whatever the harness has resolved replayed onto it. */

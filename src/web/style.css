@@ -481,6 +481,16 @@ button[data-feel='cold'] { color: var(--spent); border-color: var(--edge); }
   opacity: 0.5;
 }
 
+/* Where the floor meets the wall, drawn only where the picture has a camera:
+   the flat view ends the silt on a gradient instead. */
+#shaft .silt .silt-edge {
+  stroke: #6b6151;
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+  fill: none;
+  opacity: 0.5;
+}
+
 /* The fill fades out at the top and the grain scatters up into the water, so
    the two meet in a band rather than on a drawn edge. */
 #shaft .silt .silt-grain {

@@ -30,8 +30,11 @@ export interface Clock {
   readonly phase: number;
   /** Current unsettledness, 0 to 1, eased to 0 per tick. */
   readonly agitation: number;
-  /** A push landed. Sets the agitation and runs until it settles. */
-  strike(): void;
+  /**
+   * A push landed on `turn`. Sets the agitation and runs until it settles;
+   * one turn strikes once, however many times it is passed.
+   */
+  strike(turn: number): void;
   /** Stop for good and release the visibility listener. */
   stop(): void;
 }
@@ -46,6 +49,7 @@ export interface ClockOptions {
 export function makeClock({ draw, charge }: ClockOptions): Clock {
   let phase = 0;
   let agitation = 0;
+  let struckAt = -1;
   let timer: ReturnType<typeof setInterval> | undefined;
 
   /** Kick size and settle rate, both interpolated on how spent the charge is. */
@@ -79,7 +83,9 @@ export function makeClock({ draw, charge }: ClockOptions): Clock {
     get agitation() {
       return agitation;
     },
-    strike(): void {
+    strike(turn: number): void {
+      if (turn === struckAt) return;
+      struckAt = turn;
       agitation = clamp01(kick());
       reclock();
     },

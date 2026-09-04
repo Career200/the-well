@@ -1,19 +1,17 @@
 /**
- * The shaft, drawn looking up from the bottom: three ellipses down one cone —
- * the rim with the coin of sky in it, the waterline seen from underneath, and
- * the floor. Walls run the whole way, dry stone above the waterline and
- * halftone below it. Text is only ever placed in the dry band; see `Bands`.
+ * The shaft as one SVG, looking up from the floor: three ellipses down one
+ * cone — rim, waterline, floor — with wall joints running between them, dry
+ * stone above the waterline and halftone below. Text goes in the dry band
+ * only; see `Bands`.
  *
- * Everything shares one coordinate system, so the wall joints meet the rim,
- * the waterline and the floor at one angle and a resize rebuilds them
- * together. The viewBox tracks the host's pixel size, so dots stay square.
+ * One coordinate system throughout, so a resize rebuilds every part together.
+ * The viewBox tracks the host in px, so dots stay square.
  *
- * Two root controls: `visibility` fades the whole picture, `lucidity` rebuilds
- * it at a finer grain. Neither reveals a place — that is `resolve`, called per
- * place as the client reads the line about it.
+ * `visibility` fades the whole picture and `lucidity` rebuilds it at a finer
+ * grain; per-place reveal is `resolve`, driven by the client's narration.
  *
- * `update` only stores state. The clock settles the water and calls `draw`,
- * which is the one function here that writes to the DOM.
+ * `update` stores state. `draw` is the only function here that writes to the
+ * DOM; the clock calls it while the water is unsettled.
  */
 
 const NS = 'http://www.w3.org/2000/svg';
@@ -28,7 +26,7 @@ const attrs = (el: Element, values: Record<string, string | number>): void => {
 const clamp01 = (n: number): number => (n < 0 ? 0 : n > 1 ? 1 : n);
 const lerp = (a: number, b: number, t: number): number => a + (b - a) * t;
 
-/** Deterministic per-dot noise: the same water every run, not a snowstorm. */
+/** Deterministic per-dot noise, 0 to 1. */
 const hash = (x: number, y: number): number => {
   const n = Math.sin(x * 127.1 + y * 311.7) * 43758.5453;
   return n - Math.floor(n);
@@ -39,36 +37,41 @@ export const PLACES = ['sky', 'walls', 'water', 'silt'] as const;
 export type PlaceId = (typeof PLACES)[number];
 
 /**
- * Lucidity quantised to match `lucidityPerDiscovery`, so a discovery is one
- * visible step. Every table below is indexed by it.
+ * Lucidity quantised to `lucidityPerDiscovery`, so one discovery is one step.
+ * Every table below is indexed by it.
  */
 const STEPS = 5;
 const stepOf = (lucidity: number): number => Math.round(clamp01(lucidity) * (STEPS - 1));
 
-/** How far apart the halftone dots sit, in px. Bigger is cheaper and coarser. */
+/** Halftone dot spacing, px. Larger is coarser and cheaper to draw. */
 const DOT_SPACING = [14, 13, 12, 11, 10] as const;
-/** Joints across the far wall, and courses of stone between the two ends. */
+/** Joints across the far wall, and courses of stone between rim and floor. */
 const WALLS = [5, 7, 9, 11, 13] as const;
 const COURSES = [4, 6, 8, 10, 12] as const;
-/** How much of the room is still guessed at rather than seen, in px of blur. */
-const HAZE = [1.7, 1.25, 0.85, 0.4, 0] as const;
+/** Blur over the whole picture, px. Zero at full lucidity. */
+const HAZE = [2.6, 1.8, 1.15, 0.5, 0] as const;
 
 /**
- * Flatness of a cross-section, `ry / rx`. Constant at every depth: if it
- * varies, the wall joints stop meeting at one vanishing point.
+ * Flatness of a cross-section, `ry / rx`. Must be constant at every depth, or
+ * the wall joints stop meeting at one vanishing point.
  */
 const SECTION_ASPECT = 0.28;
 
 /**
- * Range for the lean of the outermost joint off vertical, in degrees. Solved
- * per layout rather than fixed, since whether the walls reach the edges of the
- * screen depends on the viewport. Below the floor they stop reading as walls;
- * above the ceiling they read as a funnel.
+ * Search range for the outermost joint's lean off vertical, in degrees. Solved
+ * per layout: whether the walls reach the edges depends on the viewport.
  */
 const SHAFT_ANGLE: readonly [number, number] = [22, 40];
 
 /** Radius of the rim, the small end of the cone. */
 const RIM_MAX = 150;
+/**
+ * Clear stone above the rim's top edge, as a share of height and as a px cap.
+ * The rim is placed by that edge rather than by its centre: `ry` follows the
+ * viewport width, and a centre-anchored rim opens this gap as the width falls.
+ */
+const RIM_TOP_VS_HEIGHT = 0.028;
+const RIM_TOP_MAX = 22;
 /**
  * Light falloff across the opening, as gradient stops. The figure is masked
  * with the same numbers, so its silhouette ends where the light does.
@@ -80,13 +83,27 @@ const LIT_FALLOFF = [
   ['83%', 0.34],
   ['100%', 0.18],
 ] as const;
-/** Where the light is still worth calling light. Sizes the figure. */
+/** Share of the rim radius the light fills. Sizes the figure. */
 const LIT_CORE = 0.57;
 
 /**
+ * What a fully occluding figure costs: opacity off the halo and the coin, and
+ * brightness off the whole picture, the hole being its only light. The coin
+ * keeps most of its own, since it is what the silhouette is read against.
+ */
+const OCCLUDED = { halo: 0.8, coin: 0.22, room: 0.16 } as const;
+
+/** Scale applied on top of the pose while leaving. */
+const LEAVE_SCALE = 0.93;
+
+/** Lean the body and the head take at full reach, as added scale. */
+const RESONANCE_LEAN = 0.12;
+const RESONANCE_HEAD = 0.17;
+
+/**
  * Minimum water showing above the floor, as px and as a fraction of height.
- * The waterline goes as far down the cone as it can while leaving this much,
- * since everything above it is reading room.
+ * The waterline sits as far down the cone as it can while leaving this much;
+ * everything above it is reading room.
  */
 const WATER_BAND = 130;
 const WATER_BAND_VS_HEIGHT = 0.17;
@@ -95,61 +112,61 @@ const WATER_BAND_VS_HEIGHT = 0.17;
 const NARROW = 640;
 const MIN_SILT_BAND = 56;
 
-/** ~5fps. The stepped look is intended; it suits the halftone. */
-export const TICK_MS = 190;
+/** Clock period, ms. ~5fps; the stepped look suits the halftone. */
+const TICK_MS = 190;
 /** Ripple travel per tick, scaled so a pass crosses in about 3.5s. */
 const PHASE_PER_TICK = 0.33;
-/**
- * A push kicks the water and it settles back to glass on its own. Charge picks
- * the kick and the settle rate: composed is over in about a second, spent runs
- * for nearly three.
- */
+/** Agitation a push sets, interpolated on charge. */
 const KICK_CALM = 0.45;
 const KICK_SPENT = 1;
-/** Fraction of what is left that a tick takes away. Lower runs longer. */
+/** Fraction of the remaining agitation a tick takes: ~1s calm, ~3s spent. */
 const SETTLE_CALM = 0.4;
 const SETTLE_SPENT = 0.2;
 /** Floor for the settle, so the exponential terminates and the clock stops. */
 const REST = 0.015;
 
-/**
- * Charge above which the corners stay open. A level rather than a cycle: it
- * moves only when charge does, and it stays where charge leaves it.
- */
+/** Charge above which the corners stay open. */
 const COMPOSED = 0.7;
-/** Share of the remaining opening one push may close for a moment. */
+/** Share of the corners' remaining headroom one push may take. */
 const KICK_SHARE = 0.35;
 
 /** Samples across the waterline. */
 const SURFACE_SAMPLES = 56;
 
-
 export interface ShaftState {
   /** Opacity of the whole picture, 0 to 1. Not the per-place reveal. */
   visibility: number;
-  /** Drives the grain of the picture, quantised by `stepOf`. */
+  /** Grain of the picture, quantised by `stepOf`. */
   lucidity: number;
   /** Somebody is at the rim. */
   occupied: boolean;
-  /**
-   * How far the figure has drawn back, in steps. The caller decides where the
-   * bands are; this only knows that 0 is over the rim and 2 is nearly gone.
-   */
+  /** How much of the light the figure keeps out, 0 to 1. */
+  occlusion: number;
+  /** Leaving, holding the pose. Runs with `occupied` already false. */
+  leaving: boolean;
+  /** How far the figure has drawn back: 0 over the rim, 2 nearly gone. */
   recoil: 0 | 1 | 2;
   /**
-   * The belonging reaching them, if one is. Written to the figure as
-   * `data-subject-id`, which is where the stylesheet keeps the hue map.
+   * The belonging reaching for them. Written as `data-subject-id`, which is
+   * where the stylesheet keys the hue map. Says which object, not whether it
+   * landed.
    */
   resonating: string | null;
+  /**
+   * How much of it landed, 0 to 1: the belonging's affinity for whoever is up
+   * there, times the charge it had left. A belonging nobody up there cares
+   * about is near 0 and the figure barely moves.
+   */
+  reach: number;
   /** Presence charge. Full is glass; empty never settles. */
   charge: number;
-  /** This beat was a push. An event, not a condition. */
+  /** This beat was a push. */
   pressing: boolean;
   /** Beat counter, used only to detect a new push. */
   turn: number;
   /** Places with something to say. They signal until asked. */
   signals: readonly PlaceId[];
-  /** Whether places accept clicks at all. False in beat zero and in a scene. */
+  /** Whether places accept clicks. False in beat zero and in a scene. */
   asking: boolean;
 }
 
@@ -167,39 +184,20 @@ export interface Shaft {
   update(state: ShaftState): void;
   bands(): Bands;
   /**
-   * A place coming out of the dark, once. Not part of `update`: the client
-   * calls it at the moment the line about the place is read, which is a delay
-   * on a beat rather than a fact about the state of the world — a state
-   * snapshot would put the stone up before the sentence that names it.
-   *
-   * Idempotent, and reversible only for the debug harness.
+   * A place coming out of the dark. Outside `update` because it is timed to
+   * the narration, not to the state: the client calls it as the line about
+   * that place is read. Idempotent; `on = false` is for the debug harness.
    */
   resolve(id: PlaceId, on?: boolean): void;
-  /**
-   * The room answering something the player could not do. The corners already
-   * read the charge, so a spike says *that* is what went wrong, without a
-   * number appearing anywhere.
-   */
+  /** A spike on the corners: the presence could not afford what was clicked. */
   flash(): void;
-  /**
-   * Somebody came and did not stay: the figure surfaces and goes back out of
-   * the light inside one beat. The only picture the coat's hiding has.
-   */
+  /** The figure surfaces and goes back out inside one beat. The coat's hiding. */
   withdraw(): void;
-  /** The clock, for the debug harness. The game never touches these. */
-  rate(ms: number): void;
-  freeze(): void;
-  resume(): void;
-  /** One tick, whether or not the clock is running. */
-  tick(): void;
 }
 
 export interface ShaftOptions {
   onLayout?: (bands: Bands) => void;
-  /**
-   * Top of the controls. On narrow screens the floor sits against it. No
-   * feedback loop: the controls are a fixed-size flex child.
-   */
+  /** Top of the controls, px. On narrow screens the floor sits against it. */
   floor?: () => number;
   /** A place was clicked. The client decides whether that is allowed. */
   onPlace?: (id: PlaceId) => void;
@@ -250,8 +248,7 @@ export function makeShaft(host: HTMLElement, opts: ShaftOptions = {}): Shaft {
   svg.classList.add('scene');
 
   const defs = svgEl('defs');
-  // The opening and the coin are one ellipse: the walls converge on the hole
-  // itself, and the falloff is what makes the sky read as coin-sized.
+  // The opening and the coin are one ellipse; the falloff sizes the coin.
   const skyGlow = gradient('sky-glow', 'radialGradient', [
     [LIT_FALLOFF[0]![0], '#fffdf2', LIT_FALLOFF[0]![1]],
     [LIT_FALLOFF[1]![0], '#f7e6ad', LIT_FALLOFF[1]![1]],
@@ -259,13 +256,21 @@ export function makeShaft(host: HTMLElement, opts: ShaftOptions = {}): Shaft {
     [LIT_FALLOFF[3]![0], '#c0a765', LIT_FALLOFF[3]![1]],
     [LIT_FALLOFF[4]![0], '#9c8347', LIT_FALLOFF[4]![1]],
   ]);
-  // The same profile in white, as a mask, so the figure fades out exactly
-  // where the coin does.
+  // The same profile in white, as a mask: the figure ends where the coin does.
   const litFalloff = gradient(
     'lit-falloff',
     'radialGradient',
     LIT_FALLOFF.map(([offset, alpha]) => [offset, '#ffffff', alpha] as const),
   );
+  // The sky's signal: a cold disc crossing the opening. Alpha is held almost
+  // to the edge and dropped over the last sixth, so it has a rim and reads as
+  // a body up there rather than as a smear of light.
+  const skyLightGlow = gradient('sky-light', 'radialGradient', [
+    ['0%', '#f8fafd', 0.94],
+    ['64%', '#edf1f8', 0.88],
+    ['87%', '#dbe3ef', 0.66],
+    ['100%', '#c3d0e0', 0],
+  ]);
   // Light pooling around the hole it comes through.
   const underGlow = gradient('under-glow', 'radialGradient', [
     ['0%', '#f7e6ad', 0.3],
@@ -277,14 +282,14 @@ export function makeShaft(host: HTMLElement, opts: ShaftOptions = {}): Shaft {
     ['0%', '#d9cfae', 0.55],
     ['100%', '#d9cfae', 0],
   ]);
-  // The water's own signal: a glow gathering under the surface, not on it.
+  // The water's signal: a glow gathering below the surface.
   const waterGlow = gradient('water-glow', 'radialGradient', [
     ['0%', '#cfe4d6', 0.5],
     ['60%', '#9fc4ae', 0.2],
     ['100%', '#7fa894', 0],
   ]);
-  // The floor, top to bottom. Transparent where it meets the water so the two
-  // grains interpenetrate rather than meeting on a drawn edge.
+  // The floor, top to bottom. Transparent at the top so the two grains
+  // interpenetrate over a band instead of meeting on an edge.
   const siltFill = gradient(
     'silt-body',
     'linearGradient',
@@ -296,8 +301,6 @@ export function makeShaft(host: HTMLElement, opts: ShaftOptions = {}): Shaft {
     ],
     { x1: 0, y1: 0, x2: 0, y2: 1 },
   );
-  // Everything seen through the opening is clipped to it, so no bloom creeps
-  // onto the wall.
   const hole = svgEl('clipPath');
   hole.id = 'sky-hole';
   const holeShape = svgEl('ellipse');
@@ -309,7 +312,7 @@ export function makeShaft(host: HTMLElement, opts: ShaftOptions = {}): Shaft {
   const litShape = svgEl('ellipse');
   litShape.setAttribute('fill', 'url(#lit-falloff)');
   litMask.append(litShape);
-  defs.append(skyGlow, litFalloff, underGlow, wallGlow, waterGlow, siltFill, hole, litMask);
+  defs.append(skyGlow, skyLightGlow, litFalloff, underGlow, wallGlow, waterGlow, siltFill, hole, litMask);
 
   // ---- the walls: one set of stones, cut at the waterline ----------------
   const wallsG = svgEl('g');
@@ -350,9 +353,14 @@ export function makeShaft(host: HTMLElement, opts: ShaftOptions = {}): Shaft {
 
   // ---- the sky: the rim, and what is through it --------------------------
   const coin = svgEl('ellipse');
+  coin.classList.add('coin');
   coin.setAttribute('fill', 'url(#sky-glow)');
   const halo = svgEl('ellipse');
+  halo.classList.add('halo');
   halo.setAttribute('fill', 'url(#under-glow)');
+  const skyLight = svgEl('ellipse');
+  skyLight.classList.add('sky-light');
+  skyLight.setAttribute('fill', 'url(#sky-light)');
   const rim = svgEl('ellipse');
   rim.classList.add('rim');
   rim.setAttribute('fill', 'none');
@@ -360,14 +368,15 @@ export function makeShaft(host: HTMLElement, opts: ShaftOptions = {}): Shaft {
   figure.setAttribute('mask', 'url(#sky-lit)');
   figure.classList.add('figure');
   const head = svgEl('ellipse');
+  head.classList.add('head');
   const shoulders = svgEl('ellipse');
   figure.append(shoulders, head);
 
-  // What is through the hole, and the lip of the hole itself. The lip is
-  // outside the clip: it is the stonework, not the light.
+  // Everything through the hole is clipped to it; the lip is stonework, so it
+  // stays outside the clip.
   const through = svgEl('g');
   through.setAttribute('clip-path', 'url(#sky-hole)');
-  through.append(halo, coin, figure);
+  through.append(halo, coin, skyLight, figure);
 
   const skyG = svgEl('g');
   skyG.classList.add('sky', 'place-shape');
@@ -375,8 +384,7 @@ export function makeShaft(host: HTMLElement, opts: ShaftOptions = {}): Shaft {
 
   svg.append(defs, wallsG, waterG, siltG, skyG);
 
-  // A separate channel from the SVG, so it lands on the first press, before
-  // the shaft is visible enough to read.
+  // Outside the SVG, so it reads at any `visibility`.
   const corners = document.createElement('div');
   corners.className = 'agitation';
 
@@ -398,15 +406,7 @@ export function makeShaft(host: HTMLElement, opts: ShaftOptions = {}): Shaft {
 
   host.replaceChildren(svg, corners, regions);
 
-  /**
-   * Which places are out of the dark. Owned here rather than passed per beat,
-   * so one disagreeing snapshot cannot un-resolve a place.
-   */
-  const here = new Set<PlaceId>();
-
   function resolve(id: PlaceId, on = true): void {
-    if (on) here.add(id);
-    else here.delete(id);
     shapes[id].classList.toggle('resolved', on);
     // Unresolved places are not targets and are out of the a11y tree.
     buttons[id].hidden = !on;
@@ -420,11 +420,9 @@ export function makeShaft(host: HTMLElement, opts: ShaftOptions = {}): Shaft {
   let surface: Surface = { cx: 0, cy: 0, rx: 0, ry: 0 };
   /** Which grain the picture is currently built at. A step rebuilds it. */
   let grain = -1;
-  /** The figure's own half-height, in px. Its motion is scaled to this. */
-  let litRy = 0;
-  /** The ripple, owned by the clock and by nothing else. */
+  /** Ripple travel, advanced only by the clock. */
   let phase = 0;
-  /** Current unsettledness, eased toward the charge-derived target per tick. */
+  /** Current unsettledness, 0 to 1, eased to 0 per tick. */
   let agitation = 0;
   let pressedAt = -1;
   /** Last waterline written, so a calm surface is not re-pathed every tick. */
@@ -452,7 +450,7 @@ export function makeShaft(host: HTMLElement, opts: ShaftOptions = {}): Shaft {
     // target. `sky-glow` dying before the edge is what makes it read as a coin.
     const rimRx = Math.min(w * 0.22, RIM_MAX);
     const rimRy = rimRx * SECTION_ASPECT;
-    const rimCy = Math.min(h * 0.1, 84);
+    const rimCy = Math.min(h * RIM_TOP_VS_HEIGHT, RIM_TOP_MAX) + rimRy;
     /** How much of the opening the light actually fills. Sizes the figure. */
     const lit = rimRx * LIT_CORE;
 
@@ -532,22 +530,27 @@ export function makeShaft(host: HTMLElement, opts: ShaftOptions = {}): Shaft {
     });
     attrs(halo, { cx, cy: rimCy, rx: rimRx * 1.5, ry: rimRy * 2.4 });
     attrs(rim, { cx, cy: rimCy, rx: rimRx, ry: rimRy });
+    // Round, not flattened: the shaft is foreshortened but the sky through the
+    // hole is not, so a body up there is a circle on screen. Sized off `rimRy`,
+    // which is the tighter of the two. Orbited around the dim outer ring of the
+    // coin rather than sat in the middle of it: past `LIT_CORE` the coin's own
+    // falloff is roughly halved, so the disc has something to be pale against.
+    // The orbit is px because it is a share of the rim, not of the disc.
+    const moon = rimRy * 0.42;
+    attrs(skyLight, { cx, cy: rimCy, rx: moon, ry: moon });
+    skyLight.style.setProperty('--orbit-x', `${(rimRx * 0.78).toFixed(1)}px`);
+    skyLight.style.setProperty('--orbit-y', `${(rimRy * 0.5).toFixed(1)}px`);
     // Sized to the lit core rather than the hole, matching the mask.
-    litRy = lit * 0.38;
+    const litRy = lit * 0.38;
     const headCy = rimCy + litRy * 0.42;
     const headRy = litRy * 0.4;
     attrs(head, { cx, cy: headCy, rx: lit * 0.2, ry: headRy });
     attrs(shoulders, { cx, cy: rimCy + litRy * 1.3, rx: lit * 0.55, ry: litRy * 0.62 });
-    // Both scale about a fixed point rather than moving: the figure's own
-    // bottom runs past the rim's near edge and is cut off there, so anchoring
-    // to that edge keeps it a body leaning over stone at every size. Drawing
-    // back shrinks toward it — sinking behind the rim, not floating up the
-    // shaft. The head anchors to its own chin, so it can come on further than
-    // the body does.
+    // Both poses are scales about a fixed point. The figure anchors to the
+    // rim's near edge, where its own bottom is cut off, so drawing back sinks
+    // it behind the rim; the head anchors to its own chin.
     figure.style.transformOrigin = `${cx}px ${rimCy + rimRy}px`;
     head.style.transformOrigin = `${cx}px ${headCy + headRy}px`;
-    // The sky signals by scaling about its own centre, so it stays in the hole.
-    skyG.style.setProperty('--sky-origin', `${cx}px ${rimCy}px`);
 
     // ---- the walls, cut at the waterline ---------------------------------
     // One set of stones in two groups: dry above, drowned below.
@@ -702,7 +705,7 @@ export function makeShaft(host: HTMLElement, opts: ShaftOptions = {}): Shaft {
     waterline.setAttribute('d', d);
   }
 
-  /** The only function here that writes to the DOM. Both clocks end up here. */
+  /** The only function here that writes to the DOM. */
   function draw(): void {
     const state = last;
     if (!state) return;
@@ -737,31 +740,44 @@ export function makeShaft(host: HTMLElement, opts: ShaftOptions = {}): Shaft {
     }
 
     svg.classList.toggle('pressing', state.pressing);
-    // Two terms: a level from the charge, which only stillness reverses, and a
-    // transient flinch. The flinch is taken from the headroom the level leaves,
-    // so the two cannot sum past 1.
+    // A level from the charge plus a transient flinch. The flinch takes only
+    // the headroom the level leaves, so the sum stays inside 1.
     const lack = clamp01((COMPOSED - state.charge) / COMPOSED);
     const flinch = agitation * (state.pressing ? 1 : 0.72) * KICK_SHARE;
     corners.style.opacity = String(clamp01(lack + flinch * (1 - lack)));
+
+    // The light a body over the hole keeps out. The halo and the coin lose
+    // opacity; the shaft itself loses brightness, since the hole is the only
+    // light it has.
+    const shut = clamp01(state.occlusion);
+    halo.style.opacity = String(1 - shut * OCCLUDED.halo);
+    coin.style.opacity = String(1 - shut * OCCLUDED.coin);
 
     // One filter and one opacity for the whole picture; lucidity adds the haze.
     const seen = clamp01(state.visibility);
     const eased = seen * seen * (3 - 2 * seen);
     svg.style.opacity = String(0.05 + eased * 0.95);
     const haze = HAZE[stepOf(state.lucidity)]!;
-    svg.style.filter = `brightness(${(0.4 + eased * 0.6).toFixed(3)})${haze > 0 ? ` blur(${haze.toFixed(2)}px)` : ''}`;
+    const bright = (0.4 + eased * 0.6) * (1 - shut * OCCLUDED.room);
+    svg.style.filter = `brightness(${bright.toFixed(3)})${haze > 0 ? ` blur(${haze.toFixed(2)}px)` : ''}`;
 
     figure.classList.toggle('there', state.occupied);
-    // Both at once, as one scale: pushing drives them back down behind the
-    // rim, a belonging brings them further over it. A scene that had both
-    // nets out, which is the true reading of that scene.
-    const scale = [1, 0.9, 0.79][state.recoil]! * (state.resonating ? 1.12 : 1);
+    figure.classList.toggle('leaving', state.leaving);
+    // Every part of the response scales with how much of the belonging landed,
+    // so one nobody up there cares about moves nothing.
+    const reach = state.resonating ? clamp01(state.reach) : 0;
+    // One scale for both levers: recoil sinks them behind the rim, a belonging
+    // brings them over it, and a scene with both nets out.
+    const pose = [1, 0.9, 0.79][state.recoil]! * (1 + RESONANCE_LEAN * reach);
+    const scale = pose * (state.leaving ? LEAVE_SCALE : 1);
     figure.style.transform = scale === 1 ? '' : `scale(${scale.toFixed(3)})`;
-    // Leaning in is mostly the head: it is the nearest part of them, so it
-    // gains the most, on top of whatever the body is doing.
-    head.style.transform = state.resonating ? 'scale(1.17)' : '';
-    // The hue map lives in the stylesheet, keyed the same way the log and the
-    // cells are keyed, so there is one mapping and the picture reads it.
+    head.style.transform = reach > 0 ? `scale(${(1 + RESONANCE_HEAD * reach).toFixed(3)})` : '';
+    // The motion laid over the pose keys off these in the stylesheet: a tremor
+    // at recoil, a head still attending at reach. Both animate the `translate`
+    // property, which composes with the scale above.
+    figure.dataset['recoil'] = String(state.recoil);
+    figure.style.setProperty('--reach', reach.toFixed(3));
+    // The hue map is in the stylesheet, keyed as the log and the cells are.
     if (state.resonating) figure.dataset['subjectId'] = state.resonating;
     else delete figure.dataset['subjectId'];
 
@@ -775,13 +791,11 @@ export function makeShaft(host: HTMLElement, opts: ShaftOptions = {}): Shaft {
   }
 
   // ---- the clock ---------------------------------------------------------
-  // Runs independently of the player, and stops only for a hidden tab.
+  // Runs only while the water is unsettled, and stops for a hidden tab.
   //
-  // `prefers-reduced-motion` is deliberately not read: the motion here is
-  // sub-pixel to a few pixels, with no travel, parallax or sudden onset.
+  // `prefers-reduced-motion` is not read: every animation here is under a few
+  // px, with no travel, parallax or sudden onset.
   let timer: ReturnType<typeof setInterval> | undefined;
-  let rate = TICK_MS;
-  let frozen = false;
 
   /** Kick size and settle rate, both interpolated on how spent the charge is. */
   const spent = (): number => (last ? 1 - clamp01(last.charge) : 0);
@@ -797,20 +811,17 @@ export function makeShaft(host: HTMLElement, opts: ShaftOptions = {}): Shaft {
     if (agitation === 0) reclock();
   }
 
-  /** Nothing to draw between cycles, so the clock only exists during one. */
-  const running = (): boolean => !frozen && !document.hidden && agitation > 0;
-
   function reclock(): void {
     if (timer !== undefined) {
       clearInterval(timer);
       timer = undefined;
     }
-    if (running()) timer = setInterval(beat, rate);
+    if (!document.hidden && agitation > 0) timer = setInterval(beat, TICK_MS);
   }
 
   document.addEventListener('visibilitychange', reclock);
 
-  // Nothing is out of the dark until something says so.
+  // Places start unresolved; the client reveals them one at a time.
   for (const id of PLACES) resolve(id, false);
 
   layout();
@@ -843,18 +854,5 @@ export function makeShaft(host: HTMLElement, opts: ShaftOptions = {}): Shaft {
       figure.classList.add('withdrawing');
       setTimeout(() => figure.classList.remove('withdrawing'), 2600);
     },
-    rate(ms: number): void {
-      rate = Math.max(16, ms);
-      reclock();
-    },
-    freeze(): void {
-      frozen = true;
-      reclock();
-    },
-    resume(): void {
-      frozen = false;
-      reclock();
-    },
-    tick: beat,
   };
 }

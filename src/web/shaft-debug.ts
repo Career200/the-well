@@ -1,29 +1,28 @@
 /**
- * The shaft with no game attached: every input `ShaftState` carries is a
- * control here. Dev only — nothing imports this and `vite build` never sees
- * `shaft.html`.
+ * The shaft with no game attached. Dev only — nothing imports this and
+ * `vite build` never sees `shaft.html`.
  *
- * Push and pause live in an always-visible bar, since the panel covers the
- * picture on a phone. Single-stepping stays in the panel.
+ * The toolbar imitates the game events that drive the picture, in the order
+ * and with the timing `web/main.ts` drives them; the panel holds the two
+ * continuous inputs and the per-place toggles. The panel covers the picture on
+ * a phone, so anything needed while watching stays on the bar.
  */
 import './shaft-debug.css';
-import { TUNING } from '../core/engine.js';
-import { makeShaft, PLACES, TICK_MS } from './visuals.js';
+import { makeShaft, PLACES } from './visuals.js';
 import type { PlaceId, ShaftState } from './visuals.js';
 
 const host = document.getElementById('shaft') as HTMLElement;
 const form = document.getElementById('controls') as HTMLFormElement;
 
-// Kept outside the panel, which covers the picture on a phone.
 const bar = document.createElement('div');
 bar.id = 'toolbar';
 document.body.append(bar);
 
-const barButton = (label: string, run: () => void): HTMLButtonElement => {
+const barButton = (label: string, run: (button: HTMLButtonElement) => void): HTMLButtonElement => {
   const button = document.createElement('button');
   button.type = 'button';
   button.textContent = label;
-  button.onclick = run;
+  button.onclick = () => run(button);
   bar.append(button);
   return button;
 };
@@ -37,6 +36,8 @@ const state: ShaftState = {
   visibility: 1,
   lucidity: 0.4,
   occupied: false,
+  occlusion: 0,
+  leaving: false,
   // Not a full bar: glass is indistinguishable from a stopped clock.
   charge: 0.5,
   pressing: false,
@@ -45,6 +46,7 @@ const state: ShaftState = {
   asking: true,
   recoil: 0,
   resonating: null,
+  reach: 0,
 };
 
 const signals = new Set<PlaceId>();
@@ -62,6 +64,95 @@ const sync = (): void => {
   shaft.update({ ...state, signals: [...signals] });
 };
 
+// ---- game events ----------------------------------------------------------
+
+/** Matches `LEAVING_MS` in `web/main.ts`. */
+const LEAVING_MS = 1100;
+
+/**
+ * Three phases of a scene, one per click: somebody arrives and takes the
+ * light; the last beat gives it back; the scene resolves and they go, holding
+ * whatever pose the beat left on them.
+ */
+const SCENE = ['scene start', 'last beat', 'scene end'] as const;
+let phase = 0;
+let leaveTimer: ReturnType<typeof setTimeout> | undefined;
+
+/** Up the pressure ladder and back down, so one button reaches every level. */
+const PRESSES = [1, 2, 1, 0] as const;
+let pressed = 0;
+
+/**
+ * One belonging per click, at a reach that walks the range the game produces:
+ * a first use on somebody who cares, a later use, a last one, and a thing
+ * nobody up there has any feeling about.
+ */
+const BELONGINGS = [
+  { object: 'ring', reach: 1 },
+  { object: 'whistle', reach: 0.66 },
+  { object: 'knife', reach: 0.32 },
+  { object: 'coat', reach: 0.1 },
+  { object: null, reach: 0 },
+] as const;
+let reached = 0;
+
+barButton(SCENE[0], (button) => {
+  clearTimeout(leaveTimer);
+  phase = (phase + 1) % SCENE.length;
+  state.pressing = false;
+  switch (phase) {
+    case 1:
+      Object.assign(state, { occupied: true, occlusion: 1, leaving: false, recoil: 0, resonating: null, reach: 0 });
+      pressed = 0;
+      reached = 0;
+      break;
+    case 2:
+      state.occlusion = 0;
+      break;
+    default:
+      // Both levers stay on them until the exit is over, as the client's hold
+      // keeps them: the pose is what they leave with.
+      Object.assign(state, { occupied: false, leaving: true });
+      leaveTimer = setTimeout(() => {
+        Object.assign(state, { leaving: false, recoil: 0, resonating: null, reach: 0 });
+        sync();
+      }, LEAVING_MS);
+  }
+  button.textContent = SCENE[phase]!;
+  note(SCENE[phase === 0 ? 2 : phase - 1]!);
+  sync();
+});
+
+barButton('push', () => {
+  state.recoil = PRESSES[pressed % PRESSES.length]!;
+  pressed++;
+  state.turn++;
+  state.pressing = true;
+  note(`push — recoil ${state.recoil}`);
+  sync();
+});
+
+barButton('resonate', () => {
+  const next = BELONGINGS[reached % BELONGINGS.length]!;
+  reached++;
+  state.resonating = next.object;
+  state.reach = next.reach;
+  state.turn++;
+  state.pressing = false;
+  note(next.object ? `the ${next.object} — reach ${next.reach}` : 'resonance cleared');
+  sync();
+});
+
+barButton('withdraw', () => {
+  shaft.withdraw();
+  note('under the coat — somebody came and was missed');
+});
+
+barButton('flash', () => {
+  shaft.flash();
+  note('refused — not enough charge');
+});
+
 // ---- the panel ------------------------------------------------------------
 
 const group = (title: string): HTMLElement => {
@@ -73,7 +164,7 @@ const group = (title: string): HTMLElement => {
   return box;
 };
 
-function slider(box: HTMLElement, label: string, key: 'visibility' | 'lucidity' | 'charge'): void {
+function slider(box: HTMLElement, label: string, key: 'lucidity' | 'charge'): void {
   const row = document.createElement('label');
   const name = document.createElement('span');
   const value = document.createElement('b');
@@ -83,7 +174,6 @@ function slider(box: HTMLElement, label: string, key: 'visibility' | 'lucidity' 
   input.max = '1';
   input.step = '0.01';
   input.value = String(state[key]);
-  input.dataset['key'] = key;
   name.textContent = label;
   value.textContent = state[key].toFixed(2);
   input.oninput = () => {
@@ -95,12 +185,7 @@ function slider(box: HTMLElement, label: string, key: 'visibility' | 'lucidity' 
   box.append(row);
 }
 
-function toggle(
-  box: HTMLElement,
-  label: string,
-  get: () => boolean,
-  set: (on: boolean) => void,
-): HTMLInputElement {
+function toggle(box: HTMLElement, label: string, get: () => boolean, set: (on: boolean) => void): void {
   const row = document.createElement('label');
   const input = document.createElement('input');
   input.type = 'checkbox';
@@ -113,97 +198,11 @@ function toggle(
   name.textContent = label;
   row.append(input, name);
   box.append(row);
-  return input;
-}
-
-/** A one-of-many row. The value is a string; the caller reads it back. */
-function choice(box: HTMLElement, label: string, options: readonly string[], set: (value: string) => void): void {
-  const row = document.createElement('label');
-  const name = document.createElement('span');
-  name.textContent = label;
-  const select = document.createElement('select');
-  for (const option of options) {
-    const item = document.createElement('option');
-    item.value = option;
-    item.textContent = option;
-    select.append(item);
-  }
-  select.onchange = () => {
-    set(select.value);
-    sync();
-  };
-  row.append(name, select);
-  box.append(row);
-}
-
-function action(box: HTMLElement, label: string, run: () => void): void {
-  const button = document.createElement('button');
-  button.type = 'button';
-  button.textContent = label;
-  button.onclick = run;
-  box.append(button);
 }
 
 const stats = group('state');
-slider(stats, 'visibility', 'visibility');
 slider(stats, 'lucidity', 'lucidity');
 slider(stats, 'charge', 'charge');
-toggle(stats, 'occupied', () => state.occupied, (on) => (state.occupied = on));
-const pressingBox = toggle(stats, 'pressing', () => state.pressing, (on) => {
-  state.pressing = on;
-  if (on) state.turn++;
-});
-
-// The figure. Only legible with `occupied` on — there is nobody there
-// otherwise, and nobody is what an empty rim is supposed to look like.
-choice(stats, 'recoil', ['0', '1', '2'], (value) => (state.recoil = Number(value) as 0 | 1 | 2));
-choice(stats, 'resonating', ['none', 'ring', 'whistle', 'knife', 'coat'], (value) => {
-  state.resonating = value === 'none' ? null : value;
-});
-
-const chargeBox = (): HTMLInputElement => stats.querySelector<HTMLInputElement>('input[data-key="charge"]')!;
-
-/** Redraw the panel's own numbers after a beat has moved them. */
-function show(): void {
-  const input = chargeBox();
-  input.value = String(state.charge);
-  input.dispatchEvent(new Event('input'));
-  pressingBox.checked = state.pressing;
-}
-
-// A push starts the cycle; it runs itself and stops at glass. Charge shapes it.
-barButton('push', () => {
-  state.turn++;
-  state.pressing = true;
-  state.charge = Math.max(0, state.charge - TUNING.pressCost);
-  show();
-  note(`push — charge ${state.charge.toFixed(2)}`);
-});
-
-// Runs against an empty rim, which is the only state it ever plays in.
-barButton('withdraw', () => {
-  shaft.withdraw();
-  note('under the coat — somebody came and was missed');
-});
-
-let paused = false;
-const pause = barButton('pause', () => {
-  paused = !paused;
-  if (paused) shaft.freeze();
-  else shaft.resume();
-  pause.textContent = paused ? 'play' : 'pause';
-  note(paused ? 'paused — step one tick at a time' : 'running');
-});
-
-const beats = group('beats');
-action(beats, 'be still', () => {
-  state.turn++;
-  state.pressing = false;
-  state.charge = Math.min(1, state.charge + TUNING.stillness);
-  show();
-  note(`still — charge ${state.charge.toFixed(2)}`);
-});
-action(beats, 'flash()', () => shaft.flash());
 
 const places = group('places');
 for (const id of PLACES) {
@@ -215,24 +214,6 @@ for (const id of PLACES) {
   });
 }
 
-const clock = group('clock');
-const rate = document.createElement('label');
-const rateInput = document.createElement('input');
-rateInput.type = 'number';
-rateInput.min = '16';
-rateInput.step = '5';
-rateInput.value = String(TICK_MS);
-rateInput.oninput = () => shaft.rate(Number(rateInput.value));
-const rateName = document.createElement('span');
-rateName.textContent = 'tick ms';
-rate.append(rateName, rateInput);
-clock.append(rate);
-// While paused, the only way to advance the settle a frame at a time.
-action(clock, 'step', () => {
-  shaft.tick();
-  note('one tick');
-});
-
 const readout = document.createElement('p');
 readout.className = 'note';
 form.append(readout);
@@ -241,4 +222,4 @@ function note(text: string): void {
 }
 
 sync();
-note('push to start a cycle; pause and step to walk it');
+note('scene start, then push and resonate; scene end lets them go');

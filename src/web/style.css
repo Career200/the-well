@@ -184,6 +184,18 @@ h1 {
   text-transform: lowercase;
 }
 
+/* The band is shortest where the leading costs most, so a phone spends less of
+   it per line: tighter gaps, and the caption runs into its first words instead
+   of taking a row. Together this is about two lines back in a twelve-line log. */
+@media (max-width: 640px) {
+  #log p { margin-bottom: 0.85rem; }
+
+  #log p[data-subject]::before {
+    display: inline;
+    margin: 0 0.55em 0 0;
+  }
+}
+
 #log p.idle {
   color: var(--dim);
   font-style: italic;
@@ -487,6 +499,13 @@ button[data-feel='cold'] { color: var(--spent); border-color: var(--edge); }
   opacity: 0.1;
 }
 
+/* The light through the opening and the pool under it. Both are dimmed from
+   `visuals.ts` while somebody is over the hole. The timing matches the
+   `filter` transition on `.scene`, which carries the third term, so the whole
+   occlusion moves as one. The coin's own `filter` is the sky's signal, and it
+   is slower; see below. */
+#shaft .sky .halo { transition: opacity 0.7s ease-out; }
+
 /* ---------------------------------------------------------------------------
    The places: a region of the picture and a tap target over it. A place with
    something to say animates; there is no text on any of them.
@@ -531,16 +550,38 @@ button[data-feel='cold'] { color: var(--spent); border-color: var(--edge); }
   outline-offset: -3px;
 }
 
-/* sky — scaled about its own centre, so it stays inside the hole. Origin is
-   set from `visuals.ts`, where the rim's centre is known. */
-#shaft .sky.signalling {
-  transform-origin: var(--sky-origin, 50% 12%);
-  animation: sky-nearer 9s ease-in-out infinite;
+/* sky — two readings, as on the walls: a held term that says a place is
+   signalling in any still frame, and travel to catch the eye. Nothing resizes;
+   a hole that grows reads as the picture zooming.
+
+   The held term is hue, not brightness. The coin's core is white at 0.97, so
+   it has no headroom to brighten into; its middle stops are gold and have a
+   whole wheel to turn through. `filter` rather than `opacity`, which is
+   written inline per beat for occlusion. */
+#shaft .sky .coin { transition: opacity 0.7s ease-out, filter 2.5s ease-out; }
+#shaft .sky.signalling .coin { filter: hue-rotate(150deg) saturate(1.15); }
+
+/* The travel is this, orbiting the dim outer ring of the coin. Radii come from
+   `visuals.ts`, which knows the rim; eight stops make the ellipse. */
+#shaft .sky .sky-light {
+  opacity: 0;
+  transition: opacity 2s ease-out;
 }
 
-@keyframes sky-nearer {
-  0%, 100% { transform: scale(1); }
-  45% { transform: scale(1.5); }
+#shaft .sky.signalling .sky-light {
+  opacity: 1;
+  animation: sky-orbiting 15s linear infinite;
+}
+
+@keyframes sky-orbiting {
+  0%, 100% { translate: var(--orbit-x) 0; }
+  12.5% { translate: calc(var(--orbit-x) * 0.707) calc(var(--orbit-y) * 0.707); }
+  25% { translate: 0 var(--orbit-y); }
+  37.5% { translate: calc(var(--orbit-x) * -0.707) calc(var(--orbit-y) * 0.707); }
+  50% { translate: calc(var(--orbit-x) * -1) 0; }
+  62.5% { translate: calc(var(--orbit-x) * -0.707) calc(var(--orbit-y) * -0.707); }
+  75% { translate: 0 calc(var(--orbit-y) * -1); }
+  87.5% { translate: calc(var(--orbit-x) * 0.707) calc(var(--orbit-y) * -0.707); }
 }
 
 /* walls — hidden until they have something: there is no other light on them. */
@@ -630,6 +671,46 @@ button[data-feel='cold'] { color: var(--spent); border-color: var(--edge); }
 #shaft .figure ellipse { transition: transform 0.85s ease-out; }
 
 #shaft .figure.there { opacity: 0.82; }
+
+/* Going, with the pose the beat left on them. Slower than the arrival and
+   slower than the fade a state change would give, so the exit is legible as
+   its own event rather than as the picture catching up. */
+#shaft .figure.leaving {
+  opacity: 0;
+  transition: opacity 1.1s ease-in, transform 1.1s ease-in;
+}
+
+/* The motion laid over the pose. Both ride `translate`, which composes with
+   the inline `transform` the pose is written as instead of replacing it.
+   Amplitudes are px: a few at most, and none of it travels. */
+#shaft .figure.there[data-recoil='1'] { animation: tremor 0.62s ease-in-out infinite; }
+#shaft .figure.there[data-recoil='2'] { animation: tremor 0.44s ease-in-out infinite; }
+
+/* Irregular on purpose. An even oscillation reads as a mechanism. */
+@keyframes tremor {
+  0% { translate: 0 0; }
+  18% { translate: 0.5px -0.3px; }
+  35% { translate: -0.4px 0.2px; }
+  52% { translate: 0.3px 0.4px; }
+  71% { translate: -0.5px -0.2px; }
+  88% { translate: 0.2px 0.3px; }
+  100% { translate: 0 0; }
+}
+
+/* A belonging has their attention: the head keeps moving over what it is
+   looking at rather than settling into a lean and stopping. */
+#shaft .figure[data-subject-id] .head { animation: attending 5.4s ease-in-out infinite; }
+
+/* Amplitude is `--reach`, written per beat from `visuals.ts`: a belonging that
+   landed on somebody who cares moves the head a couple of px, one that did not
+   moves it a fraction of one. */
+@keyframes attending {
+  0% { translate: 0 0; }
+  25% { translate: calc(var(--reach, 0) * -1.6px) calc(var(--reach, 0) * 0.2px); }
+  50% { translate: calc(var(--reach, 0) * 0.4px) calc(var(--reach, 0) * -0.4px); }
+  75% { translate: calc(var(--reach, 0) * 1.7px) calc(var(--reach, 0) * 0.3px); }
+  100% { translate: 0 0; }
+}
 
 /* A belonging reaching them. The hue is mixed into the near-black rather than
    replacing it, so it tints without lighting up. */

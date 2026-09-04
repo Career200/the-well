@@ -1,5 +1,6 @@
-import { newGame, NOTHING_NEW, runStatus, step, TUNING } from '../core/engine.js';
+import { newGame, NOTHING_NEW, resonanceStrength, runStatus, step, TUNING } from '../core/engine.js';
 import type { Game, PlayerAction } from '../core/engine.js';
+import { applyEffects } from '../core/effects.js';
 import { pack } from '../content/index.js';
 import { NOTICED, UNDENIABLE } from '../content/scenes.js';
 import { feelBand, feelOf, water } from '../core/readout.js';
@@ -189,28 +190,34 @@ function say(text: string, kind: LineKind | 'marker', delayMs = 0, subject?: str
 
 /**
  * A run of lines, paced. Every entrance goes through here. Returns the delay
- * the last line fell on, so a caller can append after the beat.
+ * each line fell on, so a caller can time something to any of them.
  */
-function narrate(lines: readonly NarrationLine[]): number {
+function narrate(lines: readonly NarrationLine[]): number[] {
+  const delays: number[] = [];
   let delay = 0;
   lines.forEach((line, i) => {
+    delays.push(delay);
     say(line.text, line.kind, delay, line.subject, line.subjectId);
     // The place comes up with its own sentence, not with the beat.
     reveal(line.subjectId, delay);
     const next = lines[i + 1];
     if (next) delay += gapAfter(line, next);
   });
-  return delay;
+  return delays;
 }
 
 function act(action: PlayerAction): void {
-  const wasInScene = game.mode.kind === 'scene';
+  // A beat cuts short whatever the previous one was still holding.
+  release();
+  const before = game;
+  const wasInScene = before.mode.kind === 'scene';
   // An event, not a condition, so it is read from the click.
   pushedThisBeat = action.kind === 'haunt';
   const lucidityBefore = game.state.presence.lucidity;
   const result = step(game, action);
   game = result.game;
-  const delay = narrate(result.lines);
+  const delays = narrate(result.lines);
+  const delay = delays.at(-1) ?? 0;
   // The coat's hiding is the only thing that takes lucidity back, so a drop
   // is the beat somebody came and was missed. Timed to the last line, because
   // it is the answer to what was just read.
@@ -223,8 +230,9 @@ function act(action: PlayerAction): void {
     const stop: NarrationLine = { kind: 'idle', text: pack.presence.nothingFurther };
     say(stop.text, stop.kind, last ? delay + gapAfter(last, stop) : 0);
   }
-  // Always written; CSS decides visibility, so debug shows the whole run.
   if (wasInScene && game.mode.kind !== 'scene') {
+    hold(afterAction(before, action), result.lines, delays);
+    // Always written; CSS decides visibility, so debug shows the whole run.
     const last = game.state.history.at(-1);
     if (last) say(`${last.scene} · ${last.outcome}`, 'marker');
   }
@@ -291,8 +299,7 @@ let forgetting: ReturnType<typeof setInterval> | undefined;
 
 /**
  * The `forgotten` ending only. The engine erodes the letters; this removes the
- * remaining lines one at a time. Stops when the coda is empty; re-entry is a
- * no-op.
+ * remaining lines one at a time. 
  */
 function forget(): void {
   if (forgetting) return;
@@ -308,34 +315,166 @@ function forget(): void {
   }, 13000);
 }
 
+/** Whoever is up there, as the picture shows them. */
+interface Rim {
+  occupied: boolean;
+  occlusion: number;
+  leaving: boolean;
+  recoil: 0 | 1 | 2;
+  resonating: string | null;
+  reach: number;
+}
+
+const EMPTY_RIM: Rim = {
+  occupied: false,
+  occlusion: 0,
+  leaving: false,
+  recoil: 0,
+  resonating: null,
+  reach: 0,
+};
+
+const recoilOf = (pressure: number): 0 | 1 | 2 => (pressure >= UNDENIABLE ? 2 : pressure >= NOTICED ? 1 : 0);
+
+/**
+ * A resonance against the best that belonging can do, 0 to 1.
+ * `resonanceStrength` is `power * affinity * charge`; dividing out `power`,
+ * which is the same for every use of one thing, leaves affinity times charge.
+ * The charge is what is left *after* the use, so the most any first use can
+ * carry is `1 - holdCost`, and that is what 1 means here.
+ */
+function reachOf(object: string, strength: number): number {
+  const power = pack.objects.find((o) => o.id === object)?.power ?? 0;
+  const best = power * (1 - TUNING.holdCost);
+  return best > 0 ? Math.min(1, Math.max(0, strength / best)) : 0;
+}
+
+/**
+ * The strength the engine will record for a belonging used on this beat, for
+ * the one frame the client has to draw before it can read it back. Built the
+ * way the engine builds it: the use is paid for first, and the charge left is
+ * part of what reaches them.
+ */
+function strengthOf(before: Game, object: string): number {
+  const mode = before.mode;
+  const def = pack.objects.find((o) => o.id === object);
+  const playing = mode.kind === 'scene' ? pack.scenes.find((s) => s.id === mode.scene) : undefined;
+  if (!def || !playing) return 0;
+  const spent = applyEffects(before.state, [
+    { kind: 'objectCharge', object: def.id, delta: -TUNING.holdCost },
+  ]);
+  return resonanceStrength({ ...before, state: spent }, def, playing.cast);
+}
+
+/** Beats of the playing scene left after this one, or 0 outside a scene. */
+function beatsLeft(g: Game): number {
+  const mode = g.mode;
+  if (mode.kind !== 'scene') return 0;
+  const playing = pack.scenes.find((s) => s.id === mode.scene);
+  return playing ? Math.max(0, playing.beats.length - 1 - mode.ctx.beatIndex) : 0;
+}
+
 /**
  * What the two levers have done to whoever is up there, this scene. Both are
  * kept for the length of a scene and both are gone the moment it ends, so an
  * empty rim always reads as nothing having happened — which is exactly what
- * did happen when a lever was pulled at one.
+ * did happen when a lever was pulled at one. `held` is the exception, and the
+ * only channel in `render` the words are allowed to hold up.
  */
-function atTheRim(): { recoil: 0 | 1 | 2; resonating: string | null } {
-  if (game.mode.kind !== 'scene') return { recoil: 0, resonating: null };
+function atTheRim(): Rim {
+  if (held) return held;
+  if (game.mode.kind !== 'scene') return EMPTY_RIM;
   const { pressure, resonance } = game.mode.ctx;
   return {
-    recoil: pressure >= UNDENIABLE ? 2 : pressure >= NOTICED ? 1 : 0,
+    occupied: true,
+    // Full while they are over the hole, released on the beat that is the last
+    // one: the light coming back is them leaning off it, and it is the only
+    // notice the player gets that this is the last chance to reach them.
+    occlusion: beatsLeft(game) === 0 ? 0 : 1,
+    leaving: false,
+    recoil: recoilOf(pressure),
     resonating: resonance?.object ?? null,
+    reach: resonance ? reachOf(resonance.object, resonance.strength) : 0,
   };
 }
 
+/**
+ * The rim as the beat leaves it. The scene context is gone from `game` the
+ * moment the scene resolves, so a lever pulled on the resolving beat exists
+ * nowhere to read back; it is reconstructed here from the click and from the
+ * context that click landed in.
+ */
+function afterAction(before: Game, action: PlayerAction): Rim {
+  if (before.mode.kind !== 'scene') return EMPTY_RIM;
+  const { pressure, resonance } = before.mode.ctx;
+  const pressed = action.kind === 'haunt' && before.state.presence.charge >= TUNING.pressCost;
+  const used = action.kind === 'attune' ? action.object : null;
+  const reaching = used ?? resonance?.object ?? null;
+  const strength = used ? strengthOf(before, used) : (resonance?.strength ?? 0);
+  return {
+    occupied: true,
+    occlusion: 0,
+    leaving: false,
+    recoil: recoilOf(pressed ? pressure + TUNING.pressure : pressure),
+    resonating: reaching,
+    reach: reaching ? reachOf(reaching, strength) : 0,
+  };
+}
+
+/** How long the exit takes. Matches `.figure.leaving` in the stylesheet. */
+const LEAVING_MS = 1100;
+
+let held: Rim | null = null;
+let holdTimer: ReturnType<typeof setTimeout> | undefined;
+
+/** Back to whatever the state says. A new beat cuts a running hold short. */
+function release(): void {
+  clearTimeout(holdTimer);
+  holdTimer = undefined;
+  held = null;
+}
+
+/**
+ * Keep the rim as the beat left it until the line about it has been read, then
+ * let them go with that pose still on them. Timed to the last scene line
+ * rather than to the end of the beat, so a coda does not keep them there. The
+ * coat withholds that line, and then the beat's last line is the cue instead.
+ */
+function hold(rim: Rim, lines: readonly NarrationLine[], delays: readonly number[]): void {
+  const scened = lines.reduce((found, line, i) => (line.kind === 'scene' ? i : found), -1);
+  const at = scened >= 0 ? scened : lines.length - 1;
+  const line = lines[at];
+  if (!line) return;
+  held = rim;
+  // The line's own gap, as if another like it followed: how long it takes to
+  // read, by the same rule the stagger uses.
+  holdTimer = setTimeout(() => {
+    held = { ...rim, occupied: false, leaving: true };
+    render();
+    holdTimer = setTimeout(() => {
+      release();
+      render();
+    }, LEAVING_MS);
+  }, delays[at]! + gapAfter(line, line));
+}
+
 function render(): void {
-  const inScene = game.mode.kind === 'scene';
+  // Somebody is up there as far as the picture and the label are concerned,
+  // which includes a rim being held past the end of its scene.
+  const inScene = game.mode.kind === 'scene' || (held?.occupied ?? false);
   // Backstop for any place whose line beat zero passed without saying. Not
   // once the run is over: what was never revealed stays unrevealed.
   if (game.mode.kind !== 'below' && game.mode.kind !== 'over') {
     for (const id of PLACES) reveal(id, 0);
   }
-  el('shaft').classList.toggle('receding', game.mode.kind === 'over');
+  // The run is over on the beat the terminal scene resolved, but the picture
+  // is still holding that scene's last moment; it recedes once that is read.
+  const done = game.mode.kind === 'over' && !held;
+  el('shaft').classList.toggle('receding', done);
   shaft.update({
     // Full through the run; the picture recedes once the coda has the column.
-    visibility: game.mode.kind === 'over' ? 0.28 : 1,
+    visibility: done ? 0.28 : 1,
     lucidity: game.state.presence.lucidity,
-    occupied: inScene,
     ...atTheRim(),
     charge: game.state.presence.charge,
     pressing: pushedThisBeat,
@@ -399,11 +538,10 @@ function render(): void {
     meters.append(span);
   }
 
-  // A finished run puts its controls away and gives the space to the coda.
+  // Coda replaces the run and scrolls
   const footer = document.querySelector('footer')!;
   footer.classList.toggle('gone', game.mode.kind === 'over');
   if (game.mode.kind === 'over') {
-    // The coda replaces the run, and scrolling comes back for it.
     for (const line of [...log.children]) if (!line.classList.contains('coda')) line.remove();
     log.classList.add('ended');
     // With the scrollbar hidden, the log itself has to be keyboard-reachable.
@@ -414,8 +552,6 @@ function render(): void {
     return;
   }
 
-  // Push is the only verb that can be unavailable. Stillness is never refused,
-  // so it hints when it is the only move left.
   const spent = presence.charge < TUNING.pressCost;
   el<HTMLButtonElement>('haunt-btn').disabled = spent;
   el<HTMLButtonElement>('still-btn').classList.toggle('hinting', spent);
@@ -436,6 +572,5 @@ for (const button of document.querySelectorAll<HTMLButtonElement>('[data-act]'))
   };
 }
 
-// The opening is a beat like any other, so it goes through `narrate`.
 narrate((pack.belowProse?.opening ?? []).map((text): NarrationLine => ({ kind: 'fact', text })));
 render();

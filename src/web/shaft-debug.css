@@ -49,14 +49,6 @@ body.shaft-debug label span { flex: 0 0 4.5rem; }
 body.shaft-debug label input[type='range'] { flex: 1; min-width: 0; }
 body.shaft-debug label b { flex: 0 0 2.2rem; font-weight: normal; color: var(--cold); }
 body.shaft-debug label input[type='checkbox'] { flex: 0 0 auto; }
-body.shaft-debug label input[type='number'] { width: 4rem; }
-body.shaft-debug label select { flex: 1; min-width: 0; }
-
-body.shaft-debug #controls button {
-  font: inherit;
-  padding: 0.25rem 0.5rem;
-  box-shadow: none;
-}
 
 body.shaft-debug .note { margin: 0; color: var(--cold); }
 
@@ -66,7 +58,10 @@ body.shaft-debug #toolbar {
   inset: 0.75rem auto auto 0.75rem;
   z-index: 3;
   display: flex;
+  flex-wrap: wrap;
   gap: 0.3rem;
+  /* Clear of the panel, so the two do not overlap on a narrow screen. */
+  max-width: calc(100vw - 17rem);
 }
 
 body.shaft-debug #toolbar button {

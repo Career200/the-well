@@ -35,19 +35,18 @@ export interface Dials {
   rest: Camera;
   /** Pitch added while somebody is at the rim, radians. */
   attend: number;
-  /** Field of view taken off at a full close, radians. */
+  /** Field of view taken off on each beat past the first, radians. */
   close: number;
-  /** Beats in a scene that reach a full close. At least 1. */
-  closeOver: number;
+  /** Most the field may close, however long the scene runs, radians. */
+  closeMax: number;
 }
 
 /** A copy, so an authoring dial cannot write to the module constant. */
 export const DIALS: Dials = {
   rest: { ...REST_POSE },
   attend: rad(10),
-  close: rad(12),
-  // A scene is three beats, so the close arrives on the last of them.
-  closeOver: 2
+  close: rad(6),
+  closeMax: rad(12)
 };
 
 /** What the state asks the camera for. */
@@ -69,18 +68,22 @@ export const samePose = (a: Pose, b: Pose): boolean =>
   a.attend === b.attend && a.beats === b.beats;
 
 /**
- * Where that pose stands. Narrowing the field is exactly a scale about the
- * frame's centre under this lens — the shape on screen does not change, the
- * frame holds less of the bowed periphery — so `close` is a push-in and the
- * straightening is what a push-in looks like.
+ * Where that pose stands. The beat somebody arrives on is the scene's first and
+ * takes the tilt alone; every beat past it takes another step off the field,
+ * until the close has taken all it may. Scenes are not one length, so the cap
+ * is a dial and not a share of a scene.
+ *
+ * Narrowing the field is exactly a scale about the frame's centre under this
+ * lens — the shape on screen does not change, the frame holds less of the bowed
+ * periphery — so `close` is a push-in and the straightening is what a push-in
+ * looks like.
  */
 export function cameraFor(pose: Pose, dials: Dials): Camera {
   const { rest } = dials;
-  const shut = Math.min(1, pose.beats / dials.closeOver);
   return {
     ...rest,
     pitch: rest.pitch + (pose.attend ? dials.attend : 0),
-    fov: rest.fov - shut * dials.close
+    fov: rest.fov - Math.min(pose.beats * dials.close, dials.closeMax)
   };
 }
 

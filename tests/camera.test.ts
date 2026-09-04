@@ -60,17 +60,19 @@ describe('where a pose stands', () => {
     expect(up.wall).toBe(DIALS.rest.wall);
   });
 
-  it('narrows the field over the beats, and only the field', () => {
-    const half = at(true, DIALS.closeOver / 2);
-    const shut = at(true, DIALS.closeOver);
-    expect(half.fov).toBeCloseTo(DIALS.rest.fov - DIALS.close / 2);
-    expect(shut.fov).toBeCloseTo(DIALS.rest.fov - DIALS.close);
+  it('takes a step off the field on every beat past the first', () => {
+    // The beat somebody arrives on is the scene's first and takes the tilt only.
+    expect(at(true, 0).fov).toBe(DIALS.rest.fov);
+    expect(at(true, 1).fov).toBeCloseTo(DIALS.rest.fov - DIALS.close);
+    expect(at(true, 2).fov).toBeCloseTo(DIALS.rest.fov - DIALS.close * 2);
     // The tilt is the same throughout: the two poses add rather than replace.
-    expect(shut.pitch).toBeCloseTo(at(true, 0).pitch);
+    expect(at(true, 2).pitch).toBeCloseTo(at(true, 0).pitch);
   });
 
-  it('closes no further than a full close, however long the scene runs', () => {
-    expect(at(true, DIALS.closeOver * 4).fov).toBeCloseTo(DIALS.rest.fov - DIALS.close);
+  it('closes no further than the cap, however long the scene runs', () => {
+    const steps = Math.ceil(DIALS.closeMax / DIALS.close);
+    expect(at(true, steps).fov).toBeCloseTo(DIALS.rest.fov - DIALS.closeMax);
+    expect(at(true, steps + 6).fov).toBeCloseTo(DIALS.rest.fov - DIALS.closeMax);
   });
 
   it('hands back a copy, so the dials survive the pose', () => {

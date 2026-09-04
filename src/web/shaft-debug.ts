@@ -107,17 +107,73 @@ const motionButton = barButton(`motion: ${motion}`, () => {
 const LEAVING_MS = 1100;
 
 /**
- * Three phases of a scene, one per click: somebody arrives and takes the
- * light; the last beat gives it back; the scene resolves and they go, holding
- * whatever pose the beat left on them.
+ * A scene is a run of beats. Somebody arrives on the first one and takes the
+ * light; the last one gives it back; the beat after that resolves the scene and
+ * they go, holding whatever pose it left on them.
+ *
+ * Every action inside a scene is one of its beats — `advanceScene` in the
+ * engine runs on any of them — so the levers advance the scene rather than
+ * sitting beside it, and each is a turn.
  */
-const SCENE = ['scene start', 'last beat', 'scene end'] as const;
-let phase = 0;
+/** Beats this scene runs for. Scenes are not all one length. */
+let sceneLength = 3;
+/** Which beat is on screen, or -1 outside a scene. */
+let beat = -1;
 let leaveTimer: ReturnType<typeof setTimeout> | undefined;
 
 /** Up the pressure ladder and back down, so one button reaches every level. */
 const PRESSES = [1, 2, 1, 0] as const;
 let pressed = 0;
+
+const where = (): string => (beat < 0 ? 'no scene' : `beat ${beat} of ${sceneLength}`);
+
+/**
+ * The light a body over the hole keeps out, released on the beat that is the
+ * last one. A one-beat scene gives it back on arrival, that beat being both.
+ */
+const lightBack = (): void => {
+  state.occlusion = beat >= sceneLength - 1 ? 0 : 1;
+};
+
+/** Somebody arrives. The beat they arrive on is the scene's first. */
+function startScene(): void {
+  clearTimeout(leaveTimer);
+  beat = 0;
+  pressed = 0;
+  reached = 0;
+  state.turn++;
+  Object.assign(state, {
+    occupied: true,
+    leaving: false,
+    pressing: false,
+    recoil: 0,
+    resonating: null,
+    reach: 0,
+  });
+  lightBack();
+}
+
+/** They go, keeping both levers until the exit is over: the pose is what they leave with. */
+function endScene(): void {
+  beat = -1;
+  Object.assign(state, { occupied: false, leaving: true });
+  leaveTimer = setTimeout(() => {
+    Object.assign(state, { leaving: false, recoil: 0, resonating: null, reach: 0 });
+    sync();
+  }, LEAVING_MS);
+}
+
+/**
+ * One beat of a scene, whatever pulled it. The light comes back on the last
+ * one, which is the only notice that it is the last chance to reach them.
+ */
+function nextBeat(): void {
+  state.turn++;
+  if (beat < 0) return;
+  beat++;
+  if (beat >= sceneLength) endScene();
+  else lightBack();
+}
 
 /**
  * One belonging per click, at a reach that walks the range the game produces:
@@ -133,44 +189,34 @@ const BELONGINGS = [
 ] as const;
 let reached = 0;
 
-barButton(SCENE[0], (button) => {
-  clearTimeout(leaveTimer);
-  phase = (phase + 1) % SCENE.length;
-  state.pressing = false;
-  switch (phase) {
-    case 1:
-      Object.assign(state, { occupied: true, occlusion: 1, leaving: false, recoil: 0, resonating: null, reach: 0 });
-      sceneAt = state.turn;
-      pressed = 0;
-      reached = 0;
-      break;
-    case 2:
-      state.occlusion = 0;
-      break;
-    default:
-      // Both levers stay on them until the exit is over, as the client's hold
-      // keeps them: the pose is what they leave with.
-      Object.assign(state, { occupied: false, leaving: true });
-      leaveTimer = setTimeout(() => {
-        Object.assign(state, { leaving: false, recoil: 0, resonating: null, reach: 0 });
-        sync();
-      }, LEAVING_MS);
-  }
-  button.textContent = SCENE[phase]!;
-  note(SCENE[phase === 0 ? 2 : phase - 1]!);
+const sceneButton = barButton('scene start', (button) => {
+  if (beat < 0) startScene();
+  else endScene();
+  button.textContent = beat < 0 ? 'scene start' : 'scene end';
+  note(beat < 0 ? 'they go' : `somebody arrives — ${where()}`);
   sync();
 });
 
-/** Beats since the scene started, which is what `close` is drawn on. */
-let sceneAt = 0;
-const beat = (): string => (state.occupied ? `beat ${state.turn - sceneAt}` : 'no scene');
+/** Keeps the scene button honest when a beat ends the scene rather than a click. */
+const showScene = (): void => {
+  sceneButton.textContent = beat < 0 ? 'scene start' : 'scene end';
+};
 
 barButton('push', () => {
   state.recoil = PRESSES[pressed % PRESSES.length]!;
   pressed++;
-  state.turn++;
   state.pressing = true;
-  note(`push — recoil ${state.recoil}, ${beat()}`);
+  nextBeat();
+  showScene();
+  note(`push — recoil ${state.recoil}, ${where()}`);
+  sync();
+});
+
+barButton('wait', () => {
+  state.pressing = false;
+  nextBeat();
+  showScene();
+  note(`waited — ${where()}`);
   sync();
 });
 
@@ -179,9 +225,10 @@ barButton('resonate', () => {
   reached++;
   state.resonating = next.object;
   state.reach = next.reach;
-  state.turn++;
   state.pressing = false;
-  note(`${next.object ? `the ${next.object} — reach ${next.reach}` : 'resonance cleared'}, ${beat()}`);
+  nextBeat();
+  showScene();
+  note(`${next.object ? `the ${next.object} — reach ${next.reach}` : 'resonance cleared'}, ${where()}`);
   sync();
 });
 
@@ -321,12 +368,13 @@ slider(panel, 'fov', {
     sync();
   },
 });
-// What a full close takes off the field, and how many beats of a scene reach
-// it. Narrowing is a push-in: at the attend tilt the floor is off the frame
-// from the first beat, which is the pose being allowed to lose it.
-slider(panel, 'close', {
+// What one beat of a scene takes off the field, and how far that may go over a
+// scene of any length. Narrowing is a push-in: at the attend tilt the floor is
+// off the frame from the second beat, which is the pose being allowed to lose
+// it.
+slider(panel, 'close / beat', {
   min: 0,
-  max: 40,
+  max: 20,
   step: 1,
   value: Math.round(deg(dials.close)),
   decimals: 0,
@@ -336,16 +384,29 @@ slider(panel, 'close', {
     sync();
   },
 });
-slider(panel, 'close over', {
+slider(panel, 'close max', {
+  min: 0,
+  max: 40,
+  step: 1,
+  value: Math.round(deg(dials.closeMax)),
+  decimals: 0,
+  unit: '°',
+  onInput: (n) => {
+    dials.closeMax = rad(n);
+    sync();
+  },
+});
+// Scenes are not all one length, and what the close does at the end of a long
+// one is the thing the cap decides.
+slider(panel, 'scene beats', {
   min: 1,
   max: 8,
   step: 1,
-  value: dials.closeOver,
+  value: sceneLength,
   decimals: 0,
-  unit: ' beats',
+  unit: '',
   onInput: (n) => {
-    dials.closeOver = n;
-    sync();
+    sceneLength = n;
   },
 });
 // Inert: the water is one held level, and taking it from here is its own step.

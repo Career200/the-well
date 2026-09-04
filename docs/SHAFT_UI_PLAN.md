@@ -243,18 +243,24 @@ two views; the camera is what it opens on.
 
 `attend` and `close` are the poses, and they add rather than take turns: `Pose`
 is what the state asks for — somebody at the rim, and the beats the scene has
-run — and `cameraFor` is where the contributions meet. `attend` adds 10° of pitch
-while `occupied`. `close` takes 12° off the field over two beats, a scene being
-three; the beats are counted off the turn somebody arrived on. Both ease with a
-smoothstep over 780ms on a 70ms clock and retarget from wherever a running move
-has reached, so a scene the coat cuts short turns the camera around rather than
-letting it arrive first. A dial in the panel lands at once, a dial not being a
-beat.
+run — and `cameraFor` is where the contributions meet. The beat somebody arrives
+on is the scene's first and takes `attend` alone, 10° of pitch. Every beat past
+it takes another 6° off the field, to a cap of 12°. Scenes are not one length,
+so the cap is a dial rather than a share of a scene, and a long scene holds at
+the cap.
+
+Beats are the scene's own: `advanceScene` runs on any action taken inside a
+scene and `turn` ticks once per `step()`, so counting turns off the one somebody
+arrived on gives the beat index exactly. Both poses ease with a smoothstep over
+780ms on a 70ms clock and retarget from wherever a running move has reached — a
+scene the coat cuts short turns the camera around rather than letting it arrive
+first, and a scene ending takes the field back out and the tilt back down in one
+move. A dial in the panel lands at once, a dial not being a beat.
 
 On 390×844 the pair reads: rest puts the rim's lower edge at 149px and the
 waterline at 643; `attend` at 213 and 701, which closes the floor's band to
-15px; a full `close` at 192 and 732, with the floor off the frame from the first
-beat of the scene. Losing the floor is allowed — `asking` is `idle` only, so no
+15px; a full `close` at 192 and 732, with the floor off the frame from the
+second beat on. Losing the floor is allowed — `asking` is `idle` only, so no
 place takes a click during a scene. What is left of the tilt budget is the
 silt's band, which `attend` at 10° has already spent; the two poses draw on the
 same one.

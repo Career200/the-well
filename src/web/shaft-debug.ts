@@ -1,14 +1,10 @@
 /**
- * The shaft, alone, with the game taken off it.
+ * The shaft with no game attached: every input `ShaftState` carries is a
+ * control here. Dev only — nothing imports this and `vite build` never sees
+ * `shaft.html`.
  *
- * Everything the picture reads is a control here, so a state that takes a
- * dozen turns to reach in play is one drag away. Dev only — nothing imports
- * this, and `vite build` never sees `shaft.html`.
- *
- * A push is what starts the water moving, so it and the pause live in a bar
- * that is always there — the panel covers the picture on a phone, and the
- * thing you most want to do is drive the cycle while looking at it. Stepping
- * one tick at a time stays in the panel with the rest of the instruments.
+ * Push and pause live in an always-visible bar, since the panel covers the
+ * picture on a phone. Single-stepping stays in the panel.
  */
 import { TUNING } from '../core/engine.js';
 import { makeShaft, PLACES, TICK_MS } from './visuals.js';
@@ -17,10 +13,7 @@ import type { PlaceId, ShaftState } from './visuals.js';
 const host = document.getElementById('shaft') as HTMLElement;
 const form = document.getElementById('controls') as HTMLFormElement;
 
-// Always there, over the picture. On a phone the panel is the whole screen,
-// which is no use for looking at a shaft, so the two things worth doing while
-// watching it live out here instead. Plain show/hide for the rest — this page
-// is dev only and does not need to be clever about it.
+// Kept outside the panel, which covers the picture on a phone.
 const bar = document.createElement('div');
 bar.id = 'toolbar';
 document.body.append(bar);
@@ -43,8 +36,7 @@ const state: ShaftState = {
   visibility: 1,
   lucidity: 0.4,
   occupied: false,
-  // Where a run starts. A full bar is glass — nothing moves at all — which
-  // looks exactly like a stopped clock, so the panel never opens on it.
+  // Not a full bar: glass is indistinguishable from a stopped clock.
   charge: 0.5,
   pressing: false,
   turn: 0,
@@ -59,8 +51,7 @@ const shaft = makeShaft(host, {
   onPlace: (id) => note(`asked: the ${id}`),
 });
 
-// The bench opens on the whole room. Beat zero's one-at-a-time arrival is the
-// game's business; here every place has to be there to be poked at.
+// Every place is resolved up front; the staged arrival is the game's business.
 const resolvedNow = new Set<PlaceId>(PLACES);
 for (const id of PLACES) shaft.resolve(id);
 
@@ -150,8 +141,7 @@ function show(): void {
   pressingBox.checked = state.pressing;
 }
 
-// A push is the only thing that starts the water: the cycle runs itself from
-// there and stops at glass. Charge shapes it, so drag that first.
+// A push starts the cycle; it runs itself and stops at glass. Charge shapes it.
 barButton('push', () => {
   state.turn++;
   state.pressing = true;
@@ -201,7 +191,7 @@ const rateName = document.createElement('span');
 rateName.textContent = 'tick ms';
 rate.append(rateName, rateInput);
 clock.append(rate);
-// Paused, this is the only way to look at the settle a frame at a time.
+// While paused, the only way to advance the settle a frame at a time.
 action(clock, 'step', () => {
   shaft.tick();
   note('one tick');

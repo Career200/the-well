@@ -3,7 +3,7 @@ import type { Belief, Emotion, ObjectId, PersonId, WorldState } from './types.js
 
 /**
  * The only way content may change the world. A data union rather than
- * callbacks, so consequences can be inspected and tested without running them.
+ * callbacks, so effects can be inspected and tested without applying them.
  */
 export type Effect =
   | { kind: 'emotion'; person: PersonId; emotion: Emotion; delta: number }

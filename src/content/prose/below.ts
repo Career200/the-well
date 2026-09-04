@@ -1,8 +1,9 @@
-import type { BelowSubject } from '../core/below.js';
+import type { BelowSubject } from '../../core/below.js';
 
 /**
- * The nine subjects: five ambient, four belongings. `named` is authored but
- * unreachable in beat zero — names come later.
+ * The nine subjects: five ambient places, four belongings. Each answers at the
+ * tier the presence has reached. `named` is authored but unreachable in beat
+ * zero.
  */
 export const belowSubjects: Record<string, BelowSubject> = {
   cold: {
@@ -99,11 +100,11 @@ export const belowSubjects: Record<string, BelowSubject> = {
   },
 };
 
-/** Stub transition blocks. The real prose comes after the phase is played. */
+/** Beat zero's transition blocks, keyed by the event that releases them. */
 export const belowProse = {
   opening: [
     "It's dark and cold.",
-    "You get used to darkness. Not to the cold.",
+    'You get used to darkness. Not to the cold.',
     'You are at the bottom. You have been at the bottom for some time.',
   ],
   toMovementII: ['Something in you goes still on its own, before you choose it to.'],
@@ -113,6 +114,6 @@ export const belowProse = {
   settling: [
     'Nothing. The dark goes on being the dark.',
     'The water moves against the stone and comes back to you.',
-    'Somewhere above the rim, weather. You wait for it to arrives here, and it does not.',
+    'Somewhere above the rim, weather. You wait for it to arrive here, and it does not.',
   ],
 };

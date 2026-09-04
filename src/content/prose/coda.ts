@@ -1,0 +1,63 @@
+/**
+ * Ending prose, in the four slots `core/coda.ts` composes: what happened
+ * (spine), everything else also true (clauses), what they will tell people who
+ * were not there (verdicts), and what you are (closes).
+ *
+ * Tone: nothing is confirmed on the way out, the village is never stupid,
+ * nobody is a monster, and the word is not used. Verdicts may state what the
+ * village decided, never what is true.
+ */
+
+export const spineProse = {
+  'never-woke':
+    'You did not find out that you could. The cold came, and the water moved against you the way it moves against the stone, and the walls went up out of reach, and none of it was ever going to be any different. Somewhere above, a season went past, and it did not need you for any of it. That is the end of what there is to tell. It is not the end of it for you.',
+  'thrown-cold':
+    'They did it in the afternoon, with rope, and nobody hurried. Four days later they came back for him with better rope and a lamp and a man from the next parish who knew the knots, and they had him up before dark. Somebody had thought to bring a sheet. The priest stood out in the rain and said the name twice so the ones at the back would hear it. You were there for all of it, and now you know what it looks like when they actually try.',
+  'thrown-afraid':
+    'It was done fast and badly, by men who could not look at each other afterwards, and then it was not spoken of, and nobody came back. He is not dead. Yet. He talks, and mostly not to anybody specific, and in between he moans in pain and listens for the rope. That will go on for a while. You are a foot from him and he has no idea, and there is nothing to be done about either of that.',
+  stopped:
+    'Somebody said no loud enough, and the rope went slack, and everyone went home, quietly thinking better of themselves. But the one who said it stopped sleeping, and then stopped coming to market, and in the spring he walked up the track alone at an hour nobody would see him, sat on the rim for a while, talked, but not with you. He had been carrying something for months and now he brought it down with him. It is in the silt near your hand now, as is he, and the well grows colder still.',
+  sealed:
+    'The boards went on before the frost, and were seen to for a while, and then were not, and nobody decided to stop. Years go like that. There is a boy in the village now who was not born when any of this happened, and he has started asking which one it was, and coming up to look, and working out how to be here on his own.',
+  /** `erode` eats this one as it is read, so it has to survive half gone. */
+  forgotten:
+    'The path stopped going near it. The ground grew over the short way and the long way became the way, and nobody decided that either. After that it is the cold, and the cold is not company. Whatever is down here goes on wanting and has nothing left to want at, and it does not stop, and nobody has ever found the bottom of it.',
+  undecided:
+    "They went on talking about it and nobody ever got to the end of the sentence. They were always about to do something. Then the Ferrin place changed hands and a family came down from the north who had not heard anything, with their own reasons for keeping to themselves and their own way of handling a thing that will not explain itself. Ferrin kids weren't there to tell them. Still, the versions are all round. Whoever gets to the newcomers first settles which one they will believe.",
+} as const;
+
+export const clauseProse = {
+  'body-found':
+    "It was said out loud, once, that there is a person down there. Whose they didn't dare say. But they knew.",
+  confessed:
+    'The one who knew more told somebody else. Somebody else who absolves sins and offers absolution.',
+  'a-story':
+    'There is a boy who will remember this as long as he lives. He tells it wrong and often, but better. His version has a shape to it, and shapes become good stories.',
+  'she-stayed':
+    'And she... She began coming for water she did not need — at first, only when the yard was empty, with a few words, and always looking behind before she said anything. By autumn she was talking the whole time the bucket was down, easy about it, the way you talk to somebody in the next room. In the spring she stopped going back to the house, and the ones who walked up to fetch her came down without her, and again. Eventually they stopped trying.',
+  'nothing-left':
+    "Down here nothing keeps the warmth no more. You've spent all you've had on people who are won't reach you and who would not have known it was you, and whatever arrives next will find you all the hungrier.",
+} as const;
+
+/** What the village will tell people who were not there, by settled belief. */
+export const verdictProse = {
+  haunted:
+    "They will tell that there's a haunt. Some will laugh and some will take the long way around, and some would do both.",
+  mystery:
+    "They will tell it's something nobody ever got to the bottom of. And really, that's an easier path. It asks nothing of anybody in this place.",
+  tragedy:
+    'They will tell it as a sad thing that happened, and they will be gentle about it, and with their gentleness they will forget.',
+  danger:
+    'They will tell it is a bad place, and they will keep the children away. You will see one next to you soon, despite that.',
+  none: 'They never agreed on what it was. Many versions went around the same winter, and until they find something else to talk about, it will be remembered.',
+} as const;
+
+/** What you are, in as many words as the run earned. Keyed by tier. */
+export const closeProse = {
+  veiled:
+    'And you, the cold does not let you go, and you have stopped expecting it to. There are warm shapes in the silt that you never got as far as knowing, and one of them is close enough to touch.',
+  plain:
+    "There are three things you looked at properly, and they are yours, and you know it the way you knew things before. There is a fourth down here that you never quite reached. It's warmth is fainter with every passing year.",
+  named:
+    'Your ring, in the silt, where your hand is. She gave it back to you by the gate and you carried it in your pocket the whole way here. That was your last thought and the last thing you ever did, and you have been down here a long time since then.',
+} as const;

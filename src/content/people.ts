@@ -1,37 +1,19 @@
 import type { PersonDef } from '../core/content.js';
+import { personNames } from './prose/people.js';
 
-/**
- * Nobody here knows what the presence is. Starting emotions are what the
- * village carries before the player touches anything.
- */
+type PersonKey = keyof typeof personNames;
+
+const person = (id: PersonKey, def: Omit<PersonDef, 'id' | 'name'>): PersonDef => ({
+  id,
+  name: personNames[id],
+  ...def,
+});
+
+/** Starting emotions are what the village carries before the player acts. */
 export const people: PersonDef[] = [
-  {
-    id: 'anna',
-    name: 'Anna',
-    // A year of drawing water here without knowing why she hates it.
-    emotions: { grief: 0.15, curiosity: 0.1 },
-  },
-  {
-    id: 'tomas',
-    name: 'Tomas',
-    // Whatever happened, he was there for the end of it.
-    emotions: { guilt: 0.35, fear: 0.1 },
-  },
-  {
-    id: 'anselm',
-    name: 'Anselm',
-    // Decides what the village is allowed to say out loud.
-    emotions: { fear: 0.05 },
-  },
-  {
-    id: 'boy',
-    name: 'the Ferrin boy',
-    emotions: { curiosity: 0.5 },
-  },
-  {
-    id: 'stranger',
-    name: 'the stranger',
-    // Not in play until the throwing.
-    present: false,
-  },
+  person('anna', { emotions: { grief: 0.15, curiosity: 0.1 } }),
+  person('tomas', { emotions: { guilt: 0.35, fear: 0.1 } }),
+  person('anselm', { emotions: { fear: 0.05 } }),
+  person('boy', { emotions: { curiosity: 0.5 } }),
+  person('stranger', { present: false }),
 ];

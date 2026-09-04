@@ -4,30 +4,25 @@ export type PersonId = string;
 export type ObjectId = string;
 export type SceneId = string;
 
-/**
- * What a living person can feel about the well and themselves. Deliberately
- * small: every axis must be readable from behaviour, never stated.
- */
+/** What a living person can feel about the well and themselves. */
 export const EMOTIONS = ['grief', 'fear', 'guilt', 'curiosity', 'anger', 'tenderness'] as const;
 export type Emotion = (typeof EMOTIONS)[number];
 
-/** What the village collectively decides the well *is*. Drives late-game paths. */
+/** What the village collectively decides the well is. Gates late-game scenes. */
 export const BELIEFS = ['haunted', 'mystery', 'tragedy', 'danger'] as const;
 export type Belief = (typeof BELIEFS)[number];
 
-export type Scalar = number; // conventionally clamped to [0, 1]
+/** Clamped to [0, 1] by `clamp01` wherever effects write one. */
+export type Scalar = number;
 
 /**
- * How a line is voiced. Split by who is speaking and about what, not by
- * importance — a fact is not a lesser scene, and the client styles it as one.
+ * How a line is voiced, by who is speaking and about what:
  *
- *   scene   someone is up there and this is happening to them: a storylet's
- *           beats and outcome, and what the presence does inside one.
- *   fact    the world resolving plainly — a subject coming into focus, a
- *           belonging used, an action landing, a refusal. Not faded.
+ *   scene   a storylet's beats and outcome, and what happens inside one.
+ *   fact    the world resolving plainly: a subject, a use, a refusal.
  *   idle    the texture of an empty turn. The only faded one.
  *   system  the run talking about itself: the stop, the phase ending.
- *   coda    the ending. Arrives once and never again.
+ *   coda    the ending. Arrives once.
  */
 export type LineKind = 'scene' | 'fact' | 'idle' | 'system' | 'coda';
 
@@ -36,26 +31,17 @@ export interface NarrationLine {
   kind: LineKind;
   text: string;
   /**
-   * Who the line is about, when it is one of the nine subjects speaking: a
-   * place resolving or a belonging looked at, held, or going cold. The client
-   * captions it, so those lines stop arriving headless.
-   *
-   * Only ever set when the text is the subject's own prose and the presence
-   * knows what it is looking at. Never on a glimpse — a shape in the silt has
-   * no name yet — and never on the presence's own voice, an idle turn, a
-   * scene, the system, or the coda.
+   * The caption a client puts over the line, set only when the text is one of
+   * the nine subjects' own prose and the subject is known. A glimpse and the
+   * presence's own voice both stay headless.
    */
   subject?: string;
   /**
-   * The same subject, as its id rather than its prose name. Set whenever
-   * `subject` is. A client that draws the nine has to match on something the
-   * writing cannot drift away from — `subject` is authored text and is free
-   * to stop looking like an id at any point.
+   * The same subject as an id, set whenever `subject` is, for clients matching
+   * on something the wording cannot drift away from.
    *
-   * It is also set, alone and without a caption, on a line in the presence's
-   * own voice that nonetheless names a place outright. That line is not the
-   * place speaking, so it stays headless, but a client drawing the place must
-   * not still be holding it in the dark once a sentence has said it is there.
+   * Also set alone, without a caption, on a line in the presence's own voice
+   * that names a place outright, so a client can bring that place into view.
    */
   subjectId?: string;
 }
@@ -64,35 +50,32 @@ export interface PersonState {
   id: PersonId;
   name: string;
   emotions: Record<Emotion, Scalar>;
-  /** false once they are dead, gone from the village, or otherwise out of play. */
+  /** false once they are out of play. Nobody comes back. */
   present: boolean;
 }
 
 export interface ObjectState {
   id: ObjectId;
-  /**
-   * The silt has given it up; until then it cannot be looked at or held. Two
-   * arrive in beat zero, the rest have to be pressed for.
-   */
+  /** Out of the silt. Until then it can be neither looked at nor used. */
   found: boolean;
-  /** The player has looked closely enough to know it is theirs. */
+  /** Looked at closely enough to be named. */
   discovered: boolean;
-  /** How much of its charge is left; attuning spends it. */
+  /** Charge left. Each use spends `TUNING.holdCost` and none is regained. */
   charge: Scalar;
 }
 
 export interface WellState {
-  /** How much the living think about this well at all. Gates scene frequency. */
+  /** How much the living think about this well. Gates scene frequency. */
   attention: Scalar;
-  /** Accumulated wrongness of the place. Colours every scene's default variant. */
+  /** Accumulated wrongness. Colours every scene's default variant. */
   dread: Scalar;
 }
 
 /** Two scalars, and nothing ongoing: every action is paid for on its own beat. */
 export interface PresenceState {
-  /** Spent to haunt. Refills by waiting — silence is a resource. */
+  /** Spent to haunt, recovered only by being still. */
   charge: Scalar;
-  /** How much the presence understands about itself. Rises on discovery. */
+  /** How much the presence knows about itself. Rises on discovery. */
   lucidity: Scalar;
 }
 
@@ -111,10 +94,7 @@ export interface WorldState {
 
 export const clamp01 = (n: number): Scalar => (n < 0 ? 0 : n > 1 ? 1 : n);
 
-/**
- * The bridge from private emotion to public story: why a grieving person and a
- * frightened person walk away from the same night with different villages.
- */
+/** Which belief a person's emotion feeds when resonance reaches them. */
 export const BELIEF_OF_EMOTION: Record<Emotion, Belief> = {
   grief: 'tragedy',
   tenderness: 'tragedy',
@@ -124,6 +104,6 @@ export const BELIEF_OF_EMOTION: Record<Emotion, Belief> = {
   anger: 'danger',
 };
 
-/** How loud the well has become as a subject, regardless of what it is said to be. */
+/** Total belief across all four: how loud the well is, whatever it is called. */
 export const notoriety = (state: WorldState): number =>
   BELIEFS.reduce((sum, belief) => sum + state.beliefs[belief], 0);

@@ -1,21 +1,19 @@
 import type { Effect } from './effects.js';
 import type { Emotion, ObjectId, PersonId, SceneId, WorldState } from './types.js';
 
-/** What the player did *while* a scene was playing. Built up beat by beat. */
+/** What the player did while a scene was playing. Built up beat by beat. */
 export interface SceneContext {
   /**
-   * Total haunting applied during this scene, at `TUNING.pressure` a press.
-   * One press is a noise (`NOTICED`, 0.25); two is undeniable (`UNDENIABLE`,
-   * 0.6), and two is what a full bar buys. Nothing above that is reachable.
+   * Total pressure applied during this scene, at `TUNING.pressure` a press.
+   * A full bar buys two presses, so 0.6 is the ceiling in practice.
    */
   pressure: number;
   /**
-   * The belonging used during this scene. Kept for the rest of it, like
-   * `pressure`; a second use replaces the first. Always opens `null` —
-   * nothing carries in from an idle beat.
+   * The belonging used during this scene, kept for the rest of it. A second
+   * use replaces the first. Always opens `null`.
    */
   resonance: Resonance | null;
-  /** Beats already narrated, for scenes that want to know how far they got. */
+  /** Beats already narrated. */
   beatIndex: number;
 }
 
@@ -27,9 +25,8 @@ export interface Resonance {
 }
 
 export interface Beat {
-  /** Narration from the bottom of the well. Sound first, sight second. */
   text: (state: WorldState, ctx: SceneContext) => string;
-  /** false for beats that pass too fast to act in. Defaults to true. */
+  /** false for beats that cannot be acted in. Defaults to true. */
   interactive?: boolean;
 }
 
@@ -51,9 +48,9 @@ export interface Scene {
   weight?: (state: WorldState) => number;
   /** Scenes are once-only unless this is true. */
   repeatable?: boolean;
-  /** The last step of a road: the run ends on it. The other door is starvation. */
+  /** The run ends when this scene resolves. */
   terminal?: boolean;
-  /** The coat cannot drop this scene. It plays on, and the coat steers an outcome. */
+  /** The coat cannot drop this scene; it plays on and the coat steers an outcome. */
   unhidable?: boolean;
   beats: Beat[];
   outcomes: Outcome[];

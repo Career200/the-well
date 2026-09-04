@@ -3,10 +3,7 @@ import { newGame, step, TUNING } from '../core/engine.js';
 import { makeRng } from '../core/rng.js';
 import type { ContentPack } from '../core/content.js';
 
-/**
- * Stand-in players: enough of a hand on the controls to prove a branch is
- * reachable and show what each lever does to a village at scale.
- */
+/** Stand-in players, for proving a branch is reachable at scale. */
 export type Policy = 'idle' | 'haunty' | 'resonant' | 'mixed';
 export const POLICIES: Policy[] = ['idle', 'haunty', 'resonant', 'mixed'];
 
@@ -19,22 +16,19 @@ export function choose(game: Game, pack: ContentPack, policy: Policy, roll: numb
   const buried = pack.objects.some((o) => !game.state.objects[o.id]?.found);
   const inScene = game.mode.kind === 'scene';
 
-  // Belongings have to be dug for: the silt gives them up to pressing at
-  // nobody. Only policies that intend to use one bother, and only out of spare
-  // charge — emptying the bar leaves nothing for whoever arrives.
+  // Buried belongings only come up on a press at an empty rim. Only policies
+  // that use one dig, and only above two presses' worth of charge.
   const digs = policy === 'resonant' || policy === 'mixed';
   if (!inScene && buried && digs) {
     return game.state.presence.charge >= TUNING.pressCost * 2 ? { kind: 'haunt' } : { kind: 'still' };
   }
 
-  // Every policy but `idle` at least looks around; discovery is the tutorial.
+  // Every policy but `idle` looks at what it has found.
   if (policy !== 'idle' && undiscovered.length > 0 && roll < 0.2) {
     return { kind: 'look', object: undiscovered[Math.floor(roll * 5) % undiscovered.length]!.id };
   }
 
-  // Pressing at nobody wastes the bar, and the narration says so. A belonging
-  // used at an empty rim is worse than wasted — it reaches nobody and does not
-  // keep, so a stand-in spends one only while somebody is up there to feel it.
+  // Both levers only reach people, so a stand-in spends them in a scene.
   const wantsHaunt = !inScene ? 0 : policy === 'haunty' ? 0.6 : policy === 'mixed' ? 0.3 : 0;
   const wantsAttune = !inScene ? 0 : policy === 'resonant' ? 0.5 : policy === 'mixed' ? 0.3 : 0;
 

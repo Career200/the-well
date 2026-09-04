@@ -22,6 +22,12 @@ Engine invariants, enforced by `pnpm test`: `step()` is pure; content returns
 `Effect[]` and never mutates state; seed plus action log reproduces a run exactly,
 and only `core/rng.ts` may produce randomness.
 
+**Two registers, kept apart.** `src/content/prose/**` holds player-facing prose and
+is the only place it lives. Everything else — engine, UI, tests, code comments,
+commit messages, and anything you write back to me — is plain engineering prose:
+state what the code does and in what units. Do not record why a thing changed, what
+it used to be, or what it is not; that is what git history is for.
+
 ```sh
 pnpm dev    # the game, localhost:5173 (?seed=1234 to pin a run)
 pnpm sim    # headless balance sweep

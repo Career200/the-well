@@ -1,11 +1,6 @@
 const GOATCOUNTER_ENDPOINT = 'https://dzh.goatcounter.com/count';
 
-/**
- * Loaded from `main.ts`, not the HTML: a static `<script>` tag fires in dev
- * too, counting every local reload. Gating on `PROD` here keeps that decision
- * in code, next to the endpoint, instead of split across a template and a
- * build flag.
- */
+/** Injected from JS rather than the HTML so `PROD` can gate it. */
 export const initAnalytics = (): void => {
   if (!import.meta.env.PROD) return;
 

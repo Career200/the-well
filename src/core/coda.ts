@@ -1,11 +1,7 @@
 /**
- * The ending, composed rather than chosen. A coda is not a threshold on a
- * belief: it reads which door the run went out of, what the village settled
- * on, how much the presence understood, and the few facts that change an
- * ending outright. Four slots out of about a dozen blocks multiply past the
- * twenty-odd variants the design asks for.
- *
- * The prose here is disposable; the shape is not.
+ * The ending, composed from four slots rather than chosen: which door the run
+ * went out of, what the village settled on, how much the presence understood,
+ * and the facts that change an ending outright.
  */
 import { BELIEFS } from './types.js';
 import type { Belief, NarrationLine, WorldState } from './types.js';
@@ -19,7 +15,7 @@ export interface CodaContext {
   door: Door;
   /** What the village settled on, or null if it never settled on anything. */
   verdict: Belief | null;
-  /** What the presence worked out about itself. Gates what the ending may say. */
+  /** What the presence worked out about itself. Picks the close. */
   tier: Tier;
 }
 
@@ -41,12 +37,9 @@ export interface Coda {
   closes: Record<Tier, string>;
 }
 
-/**
- * How far ahead a belief must be to count as what the village decided. Under
- * this nothing led, which is its own ending.
- */
+/** How far ahead a belief must be to count as what the village decided. */
 export const CODA_MARGIN = 0.12;
-/** Under this, the well was never really a subject at all. */
+/** Below this the top belief does not count at all. */
 const CODA_FLOOR = 0.05;
 
 export function verdictOf(state: WorldState): Belief | null {
@@ -58,9 +51,8 @@ export function verdictOf(state: WorldState): Belief | null {
 }
 
 /**
- * Letters going out of the text, more of them the further in you read. Only
- * letters — spaces and stops stay, so what is left keeps the shape of writing
- * and reads as loss rather than noise. Deterministic on the seeded rng.
+ * Blanks letters at a rate rising from 0 to `most` across the whole passage.
+ * Only letters: spaces and punctuation stay. Deterministic on the seeded rng.
  */
 export function erode(lines: readonly NarrationLine[], pick: () => number, most = 0.62): NarrationLine[] {
   const total = lines.reduce((n, l) => n + l.text.length, 0) || 1;
@@ -80,8 +72,7 @@ export function resolveCoda(coda: Coda, ctx: CodaContext): { spine: string; line
   const line = (text: string): NarrationLine => ({ kind: 'coda', text });
   const spine = coda.spines.find((s) => !s.when || s.when(ctx)) ?? coda.spines[coda.spines.length - 1];
 
-  // A village never given anything to tell has no answer — not even "they
-  // never agreed" — so a run nobody came to skips the slot entirely.
+  // A run no scene played in skips the verdict slot entirely.
   const told = ctx.state.history.length > 0;
 
   return {

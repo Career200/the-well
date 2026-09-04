@@ -12,57 +12,79 @@ export interface PersonDef {
   present?: boolean;
 }
 
-/** Mechanics here; what it says is in `pack.below` under the same id. */
+/** Mechanics only; what a belonging says is in `pack.below` under the same id. */
 export interface ObjectDef {
   id: ObjectId;
-  /** How the presence refers to it once it knows what it is looking at. */
   name: string;
-  /**
-   * Taking it up and letting it go, first hold to last. Three holds and then
-   * cold forever, felt in the prose rather than tracked: the warmth arrives
-   * smaller each time and the last entry says it is over. Falls back to a
-   * generic pair when absent.
-   */
+  /** One line per use, first to last. Three uses empty a belonging. */
   hold?: string[];
   release?: string[];
-  /** The feeling the thing carries. */
   emotion: Emotion;
-  /** Per-person multiplier on that feeling. Unlisted people barely register it. */
+  /** Per-person multiplier on that emotion. Unlisted people default to 0.1. */
   affinity: Partial<Record<PersonId, number>>;
   /** Strength before affinity. */
   power: number;
-  /** Only these can be attuned to before being discovered. */
+  /** Attunable before being looked at. */
   discovered?: boolean;
 }
 
-/**
- * The village, read back to the presence. Whatever it holds most of, said as
- * something heard from the bottom. No effects: this is the arrow pointing the
- * other way.
- */
+/** The village read back to the presence. Carries no effects. */
 export interface Readout {
   beliefs: Record<Belief, string>;
-  /** Louder than a belief, so these get two bands: over the floor, then over 0.6. */
+  /** Two bands: over `READOUT_FLOOR`, then over `READOUT_LOUD`. */
   attention: [string, string];
   dread: [string, string];
+}
+
+/** Lines the engine itself speaks, for actions and for the stop. */
+export interface PresenceProse {
+  /** Pushing with nothing left. The first states the rule; the rest cycle. */
+  tooThin: [string, string, string];
+  /** A push that spends the last of the charge. */
+  spent: string;
+  pushInScene: string;
+  pushBelow: string;
+  pushFound: string;
+  pushEmpty: string;
+  busy: string;
+  noSuchThing: string;
+  nothingToSee: string;
+  notLookedAt: string;
+  spentBelonging: string;
+  /** `{thing}` is substituted with the belonging's name. */
+  holdFallback: string;
+  stalled: string;
+  quiet: string;
+  /** Said by the client once `runStatus` reaches `quiet`. */
+  nothingFurther: string;
+  ambientFallback: string;
+}
+
+/** Scalars as sentences. Bands are in `core/readout.ts`; wording is here. */
+export interface InstrumentProse {
+  /** Five bands of presence charge, fullest first. */
+  water: [string, string, string, string, string];
+  /** Four bands of belonging charge, warmest first. */
+  feel: [string, string, string, string];
+  /** Appended to the shaft's label while a scene is playing. */
+  atTheRim: string;
 }
 
 export interface ContentPack {
   people: PersonDef[];
   objects: ObjectDef[];
   scenes: Scene[];
+  presence: PresenceProse;
+  instrument: InstrumentProse;
   /** Starting values for the well itself. */
   well?: { attention?: Scalar; dread?: Scalar };
-  /** Lines for the empty turns between scenes. Waiting is still a texture. */
+  /** Lines for the empty turns between scenes. */
   ambient?: string[];
-  /** Said instead of an ambient line when the village has become something. */
+  /** Said instead of an ambient line once a quality is loud enough. */
   readout?: Readout;
   /** Pulling the coat over yourself, and missing whoever came. */
   hiding?: string[];
-  /**
-   * One of the five has become lookable. Generic — the line does not say which,
-   * only how clearly the presence is working — so it is keyed by tier.
-   */
+  /** One of the five has become lookable. Keyed by tier; never says which. */
   noticing?: Record<Tier, string>;
   /** The endings. See `core/coda.ts`. */
   coda?: Coda;
@@ -75,7 +97,7 @@ export interface ContentPack {
     toMovementIII: string[];
     exhaustionExtra: string[];
     lightCrossing: string[];
-    /** A turn where nothing resolved. The dark's own ambient pool. */
+    /** Said on a turn that resolved nothing. */
     settling: string[];
   };
 }

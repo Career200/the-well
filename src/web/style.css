@@ -45,7 +45,6 @@ body { overflow-x: hidden; }
    take pointer events across the whole viewport, so anything left behind them
    is unclickable, not merely underneath. */
 #app > header,
-#app > #peek,
 #app > #log,
 #app > footer {
   position: relative;
@@ -211,8 +210,8 @@ h1 {
   padding-top: 1rem;
 }
 
-/* marker — an instrument, not a line. Written every time, shown only with the
-   debug switch, so turning it on reveals the whole run at once. */
+/* marker — an instrument, not a line. Written every time, kept out of sight:
+   it feeds the console-only debug dump rather than the page. */
 #log p.marker {
   display: none;
   color: #4a463f;
@@ -220,8 +219,6 @@ h1 {
   font-size: 0.65rem;
   letter-spacing: 0.15em;
 }
-
-body.debug #log p.marker { display: block; }
 
 @keyframes surface {
   from { opacity: 0; transform: translateY(0.4rem); }
@@ -463,20 +460,9 @@ button[data-feel='cold'] { color: var(--spent); border-color: var(--edge); }
 
 .actions { display: flex; gap: 0.4rem; }
 
-/* The bars are a debug view wearing a costume, so they live behind the switch
-   with the rest of the instruments. */
+/* The bars are a debug view wearing a costume, so they stay out of the page
+   entirely now — the console-only debug dump replaces them. */
 #meters { display: none; }
-
-body.debug #meters {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 1.25rem;
-  margin-top: 0.9rem;
-  font-family: ui-monospace, monospace;
-  font-size: 0.7rem;
-  letter-spacing: 0.08em;
-  color: var(--dim);
-}
 
 #meters b { font-weight: normal; color: var(--cold); }
 
@@ -725,33 +711,6 @@ body.debug #meters {
 
 /* Somebody at the rim. Never a face, and it never quite covers the light. */
 #shaft .figure.there { opacity: 0.82; }
-
-#peek {
-  font-family: ui-monospace, monospace;
-  font-size: 0.65rem;
-  padding: 0.2rem 0.5rem;
-  background: none;
-  box-shadow: none;
-}
-
-#peek:hover:not(:disabled) {
-  box-shadow: none;
-  transform: none;
-}
-
-#debug {
-  position: fixed;
-  inset: auto 1rem 1rem auto;
-  max-width: 22rem;
-  max-height: 70vh;
-  overflow: auto;
-  background: #0d0c0a;
-  border: 1px solid var(--edge);
-  padding: 0.85rem;
-  font: 11px/1.5 ui-monospace, monospace;
-  color: var(--dim);
-  white-space: pre;
-}
 
 /* ---------------------------------------------------------------------------
    The debug harness (`shaft.html`). Dev only, and deliberately plain: it is

@@ -22,7 +22,6 @@ const el = <T extends HTMLElement>(id: string): T => {
 const log = el('log');
 const subjects = el('subjects');
 const meters = el('meters');
-const debug = el<HTMLPreElement>('debug');
 
 /**
  * The four things that are yours, in reading order. Built once and never
@@ -437,7 +436,7 @@ function render(): void {
     log.tabIndex = 0;
     fitLog(shaft.bands());
     if (game.mode.spine === 'forgotten') forget();
-    if (!debug.hidden) debug.textContent = dump();
+    if (import.meta.env.DEV) console.log(dump());
     return;
   }
 
@@ -450,32 +449,36 @@ function render(): void {
   el<HTMLButtonElement>('haunt-btn').disabled = spent;
   el<HTMLButtonElement>('still-btn').classList.toggle('hinting', spent);
 
-  // The debug row still comes and goes, so refit after every beat rather than
-  // only when the shaft is laid out.
   fitLog(shaft.bands());
 
-  if (!debug.hidden) debug.textContent = dump();
+  if (import.meta.env.DEV) console.log(dump());
 }
 
-function dump(): string {
+function dump(): object {
   const s = game.state;
-  const rows = [
-    `turn ${s.turn}  seed ${s.seed}  mode ${game.mode.kind}`,
-    `beliefs ${BELIEFS.map((b) => `${b} ${s.beliefs[b].toFixed(2)}`).join('  ')}`,
-    '',
-  ];
-  for (const person of Object.values(s.people)) {
-    const felt = EMOTIONS.filter((e) => person.emotions[e] > 0.01)
-      .map((e) => `${e} ${person.emotions[e].toFixed(2)}`)
-      .join(' ');
-    rows.push(`${person.present ? ' ' : '×'} ${person.name.padEnd(15)} ${felt || '—'}`);
-  }
   const status = runStatus(game);
-  rows.push('', `stance ${stanceLine(s.presence, nameOf)}  ·  ${status.kind === 'open' ? 'open' : `quiet — ${status.reason}`}`);
-  rows.push(`objects ${Object.values(s.objects).map((o) => `${o.id} ${o.charge.toFixed(2)}`).join('  ')}`);
-  rows.push(`flags ${Object.keys(s.flags).filter((f) => s.flags[f]).join(', ') || '—'}`);
-  rows.push(`played ${s.history.map((h) => `${h.scene}:${h.outcome}`).join(', ') || '—'}`);
-  return rows.join('\n');
+  return {
+    turn: s.turn,
+    seed: s.seed,
+    mode: game.mode.kind,
+    beliefs: Object.fromEntries(BELIEFS.map((b) => [b, Number(s.beliefs[b].toFixed(2))])),
+    people: Object.fromEntries(
+      Object.values(s.people).map((person) => [
+        person.name,
+        {
+          present: person.present,
+          emotions: Object.fromEntries(
+            EMOTIONS.filter((e) => person.emotions[e] > 0.01).map((e) => [e, Number(person.emotions[e].toFixed(2))]),
+          ),
+        },
+      ]),
+    ),
+    stance: stanceLine(s.presence, nameOf),
+    status: status.kind === 'open' ? 'open' : `quiet — ${status.reason}`,
+    objects: Object.fromEntries(Object.values(s.objects).map((o) => [o.id, Number(o.charge.toFixed(2))])),
+    flags: Object.keys(s.flags).filter((f) => s.flags[f]),
+    played: s.history.map((h) => `${h.scene}:${h.outcome}`),
+  };
 }
 
 for (const button of document.querySelectorAll<HTMLButtonElement>('[data-act]')) {
@@ -488,16 +491,6 @@ for (const button of document.querySelectorAll<HTMLButtonElement>('[data-act]'))
     act({ kind } as PlayerAction);
   };
 }
-
-/**
- * One switch for everything that is not the game: state panel, meters, and the
- * scene·outcome markers. All instruments; all put away together.
- */
-el('peek').onclick = () => {
-  debug.hidden = !debug.hidden;
-  document.body.classList.toggle('debug', !debug.hidden);
-  render();
-};
 
 // The first thing anybody sees, and it was arriving as one block: three
 // `say`s a millisecond apart. It is a beat like any other and paces like one.

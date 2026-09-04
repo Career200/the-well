@@ -65,7 +65,7 @@ const resolvedNow = new Set<PlaceId>(PLACES);
  */
 type Motion = 'off' | 'on';
 /** The camera's own dials, so the panel can find the numbers by eye. */
-const dials: Dials = { rest: { ...DIALS.rest }, attend: DIALS.attend };
+const dials: Dials = { ...DIALS, rest: { ...DIALS.rest } };
 
 const RENDERERS: Record<Motion, ShaftFactory> = {
   off: makeShaft,
@@ -140,6 +140,7 @@ barButton(SCENE[0], (button) => {
   switch (phase) {
     case 1:
       Object.assign(state, { occupied: true, occlusion: 1, leaving: false, recoil: 0, resonating: null, reach: 0 });
+      sceneAt = state.turn;
       pressed = 0;
       reached = 0;
       break;
@@ -160,12 +161,16 @@ barButton(SCENE[0], (button) => {
   sync();
 });
 
+/** Beats since the scene started, which is what `close` is drawn on. */
+let sceneAt = 0;
+const beat = (): string => (state.occupied ? `beat ${state.turn - sceneAt}` : 'no scene');
+
 barButton('push', () => {
   state.recoil = PRESSES[pressed % PRESSES.length]!;
   pressed++;
   state.turn++;
   state.pressing = true;
-  note(`push — recoil ${state.recoil}`);
+  note(`push — recoil ${state.recoil}, ${beat()}`);
   sync();
 });
 
@@ -176,7 +181,7 @@ barButton('resonate', () => {
   state.reach = next.reach;
   state.turn++;
   state.pressing = false;
-  note(next.object ? `the ${next.object} — reach ${next.reach}` : 'resonance cleared');
+  note(`${next.object ? `the ${next.object} — reach ${next.reach}` : 'resonance cleared'}, ${beat()}`);
   sync();
 });
 
@@ -304,9 +309,46 @@ slider(panel, 'attend', {
     sync();
   },
 });
-// Inert: the field of view is one held angle and the water one held level, and
-// taking either from here is its own step.
-slider(panel, 'fov', { min: 70, max: 175, step: 1, value: Math.round(deg(REST_POSE.fov)), decimals: 0, unit: '°' });
+slider(panel, 'fov', {
+  min: 70,
+  max: 175,
+  step: 1,
+  value: Math.round(deg(dials.rest.fov)),
+  decimals: 0,
+  unit: '°',
+  onInput: (n) => {
+    dials.rest.fov = rad(n);
+    sync();
+  },
+});
+// What a full close takes off the field, and how many beats of a scene reach
+// it. Narrowing is a push-in: at the attend tilt the floor is off the frame
+// from the first beat, which is the pose being allowed to lose it.
+slider(panel, 'close', {
+  min: 0,
+  max: 40,
+  step: 1,
+  value: Math.round(deg(dials.close)),
+  decimals: 0,
+  unit: '°',
+  onInput: (n) => {
+    dials.close = rad(n);
+    sync();
+  },
+});
+slider(panel, 'close over', {
+  min: 1,
+  max: 8,
+  step: 1,
+  value: dials.closeOver,
+  decimals: 0,
+  unit: ' beats',
+  onInput: (n) => {
+    dials.closeOver = n;
+    sync();
+  },
+});
+// Inert: the water is one held level, and taking it from here is its own step.
 slider(panel, 'waterline', {
   min: 0,
   max: 30,

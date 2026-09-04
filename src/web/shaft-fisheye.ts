@@ -16,8 +16,8 @@
  * dresses both.
  */
 
-import { cameraFor, DIALS, makeCamera, poseOf } from './camera.js';
-import type { Dials, PoseName } from './camera.js';
+import { cameraFor, DIALS, makeCamera, poseOf, samePose } from './camera.js';
+import type { Dials, Pose } from './camera.js';
 import { makeChrome, veil } from './chrome.js';
 import { makeClock } from './clock.js';
 import { COURSES, JOINT_STEPS, RING_STEPS, SILT_RINGS, stepOf, WALLS } from './grain.js';
@@ -171,12 +171,14 @@ export function makeFisheyeShaft(
   /** A floor cell, well units. Sets how many px one speck is worth. */
   let cell = 0;
 
-  /** Which pose the state last asked for. A change is what eases. */
-  let posed: PoseName = 'rest';
+  /** What the state last asked for. A change is what eases. */
+  let posed: Pose = { attend: false, beats: 0 };
+  /** The turn a scene started on, so a beat inside one can be counted off it. */
+  let sceneAt = 0;
 
   const clock = makeClock({ draw: () => draw(), charge: () => last?.charge ?? 1 });
   const camera = makeCamera({
-    start: cameraFor('rest', dials()),
+    start: cameraFor(posed, dials()),
     draw: () => reproject(),
     // Bands travel the length of a move, and the reading band cannot be
     // relaid fifteen times a second. The client is told where the picture
@@ -407,14 +409,18 @@ export function makeFisheyeShaft(
       // A step of lucidity changes the grain, which means a full rebuild.
       if (stepOf(state.lucidity) !== grain) build();
 
-      const name = poseOf(state);
-      const target = cameraFor(name, dials());
-      if (name !== posed) {
-        // A beat asked for a different pose. This is the only thing that eases.
-        posed = name;
+      // A scene's beats are counted off the turn somebody arrived on.
+      if (state.occupied && !posed.attend) sceneAt = state.turn;
+      const pose = poseOf(state, state.turn - sceneAt);
+      const target = cameraFor(pose, dials());
+      if (!samePose(pose, posed)) {
+        // A beat asked for something else. This is the only thing that eases,
+        // and it retargets from wherever a running move has reached.
+        posed = pose;
         camera.aim(target);
       } else {
-        // The pose is unchanged, so any difference is a dial moving under it.
+        // What the state asks for is unchanged, so any difference is a dial
+        // moving under it.
         camera.jump(target);
       }
 

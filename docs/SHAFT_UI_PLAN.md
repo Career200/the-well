@@ -45,9 +45,13 @@ development. At these values the resting surface sits at 1.05 and the eye at 1.5
 so **~0.45 of rise — about 5% of height — puts the water at eye level.** That
 figure is the rise budget.
 
-**Narrowing the field of view straightens the bowing.** Scale and distortion move
-on one dial, so a push-in relaxes the well and a pull-out closes it in. This is
-the picture `dread` keys to.
+**The field of view is exactly a scale about the frame's centre.** `fov` enters
+the lens only through `f`, so changing it moves no point relative to any other:
+the shape on screen is fixed and the frame holds more or less of the bowed
+periphery. A push-in straightens what is left in frame without straightening
+anything, and there is no second dial hiding in this one — more bend comes from
+`eye` and `wall`. It also means a fov-only move needs no reprojection, one
+transform on the root standing in for it, should the per-beat cost ever ask.
 
 ### The waterline is a level
 
@@ -127,7 +131,7 @@ direction is authored:
 | ----------- | ---------------------------- | --------------------------------------- |
 | **rest**    | idle                         | base pitch and fov                      |
 | **attend**  | `occupied`                   | small pitch up at scene start           |
-| **close**   | beats elapsed in a scene     | fov narrows toward the coin, then back  |
+| **close**   | beats elapsed in a scene     | field narrows; let go when they go      |
 | **inspect** | a place answered             | pitch and fov centre it, then return    |
 | **flinch**  | a refused push               | camera holds; the waterline trembles    |
 | **recede**  | run over                     | pull back; runs with `receding`         |
@@ -180,7 +184,8 @@ read.
   full lucidity is ~5.2k projected points and 2.5ms of scripting on a desktop
   CPU, against a 70ms camera tick. The water's clock runs at `TICK_MS` 190
   (~5fps) and reads as stepped by design; the gap between "stepped" and "janky"
-  is the thing to tune.
+  is the thing to tune. `attend` moves twice a scene but `close` moves on every
+  beat of one, so the per-beat frame is the one that has to hold up.
 - Full lucidity is the expensive frame, since subdivision is both the detail dial
   and the cost dial.
 
@@ -236,14 +241,23 @@ tap targets, reveal, `veil` — `web/sky.ts` the light through the opening, and
 `web/clock.ts` the agitation. The motion selector in `shaft-debug.ts` swaps the
 two views; the camera is what it opens on.
 
-`rest` and `attend` are the poses that exist. `attend` adds 10° of pitch while
-`occupied`, eased with a smoothstep over 780ms on a 70ms clock; `tilt` and
-`attend` in the debug panel move the two dials and land at once, a dial not
-being a beat. Pitch carries the whole picture down the frame: at `attend` on
-390×844 the rim's lower edge is at 213px against 149 at rest, the waterline at
-701 against 643, and the silt edge at 829 of 844, which closes the floor's band
-to 15px. Past about 12° the floor leaves the frame altogether. The silt's band is
-what caps the tilt, well before the geometry does.
+`attend` and `close` are the poses, and they add rather than take turns: `Pose`
+is what the state asks for — somebody at the rim, and the beats the scene has
+run — and `cameraFor` is where the contributions meet. `attend` adds 10° of pitch
+while `occupied`. `close` takes 12° off the field over two beats, a scene being
+three; the beats are counted off the turn somebody arrived on. Both ease with a
+smoothstep over 780ms on a 70ms clock and retarget from wherever a running move
+has reached, so a scene the coat cuts short turns the camera around rather than
+letting it arrive first. A dial in the panel lands at once, a dial not being a
+beat.
+
+On 390×844 the pair reads: rest puts the rim's lower edge at 149px and the
+waterline at 643; `attend` at 213 and 701, which closes the floor's band to
+15px; a full `close` at 192 and 732, with the floor off the frame from the first
+beat of the scene. Losing the floor is allowed — `asking` is `idle` only, so no
+place takes a click during a scene. What is left of the tilt budget is the
+silt's band, which `attend` at 10° has already spent; the two poses draw on the
+same one.
 
 The opening is a filled region: one projected rim polyline serves as the lip,
 the coin and the clip, with `sky-glow` placed in px off its own box and the
@@ -261,7 +275,9 @@ light is placed off, that being a shape lit rather than a band cut. Provisional
 past that: enough to stack the tap targets and nothing more. A ring the frame no
 longer holds gives its place no band. `onLayout` fires where a move comes to
 rest and not on the frames between, the reading band not being relayable fifteen
-times a second; `bands()` answers live for a caller that wants it sooner.
+times a second; `bands()` answers live for a caller that wants it sooner. During
+a scene that is once a beat, and the band grows by about 50px across the scene
+rather than pinching — the benign direction, but it moves under the reader.
 
 The halo pooling under the lip is not drawn — it is light on the upper wall and
 may want to be real rather than a screen-space ellipse.
@@ -269,14 +285,6 @@ may want to be real rather than a screen-space ellipse.
 ---
 
 ## Order
-
-**C. Field of view, with early cancel.** The dial carries a whole `Camera` and
-retargets from wherever a move has reached, so a pose that narrows the field
-needs nothing new there. The work is `close` itself — the field narrowing with
-beats elapsed and opening back out — and its timing, which hangs off the delay
-array `narrate()` returns the way `hold` already times the figure, and which the
-coat can cut short mid-move. Narrowing the field straightens the bowing, so a
-push-in relaxes the well as well as closing on it.
 
 **D. The figure and its states.** `occupied`, `leaving`, `recoil`, and
 `resonating` with `reach`. Every anchor the flat picture takes from the rim's
@@ -292,6 +300,10 @@ The rise draws both ways — flooded grain and a rising wash — behind a switch
 like the one §Motion uses, and the pair is looked at before either is kept.
 
 **Unplaced.** The reading-band probe, which is independent of all of the above
-and is still the one result that can invalidate the projection. Deriving `bands`
+and is still the one result that can invalidate the projection. What else the
+field of view answers to: `close` takes it per scene, and `dread` is a run-long
+scalar that might also — unsettled, and not in `ShaftState` either way. Pose
+timing off the delay array `narrate()` returns, the way `hold` times the figure,
+which is a move's duration becoming per-call rather than one constant. Deriving `bands`
 properly. Parity against the flat picture on everything the motion selector
 switches between.

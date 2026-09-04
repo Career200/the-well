@@ -3,12 +3,14 @@
  * poses.
  *
  * Poses are authored. Nothing here reads player input, and nothing here writes
- * game state. A move is beat-driven — `aim` is called when a beat changes which
- * pose the state asks for, and the ease runs on its own clock until it arrives.
+ * game state. A move is beat-driven — `aim` is called when a beat changes what
+ * the state asks for, and the ease runs on its own clock until it arrives.
  * `jump` stands at a pose with no move, which is what an authoring dial does.
  *
- * The ease carries a whole `Camera`, so the poses that move the field of view
- * need no new machinery here.
+ * Poses add rather than take turns: `attend` comes up while somebody is at the
+ * rim and `close` narrows over the beats of the scene they are at the rim for,
+ * so `Pose` is what the state asks for and `cameraFor` is where the
+ * contributions meet.
  */
 
 import { REST_POSE } from './projection.js';
@@ -27,27 +29,59 @@ const TICK_MS = 70;
 /** How long a move takes, ms. One narration line's worth of time. */
 const MOVE_MS = 780;
 
-/** The dials the poses are built from. Radians. */
+/** The dials the poses are built from. */
 export interface Dials {
   /** Where the camera rests. */
   rest: Camera;
-  /** Pitch added while somebody is at the rim. */
+  /** Pitch added while somebody is at the rim, radians. */
   attend: number;
+  /** Field of view taken off at a full close, radians. */
+  close: number;
+  /** Beats in a scene that reach a full close. At least 1. */
+  closeOver: number;
 }
 
 /** A copy, so an authoring dial cannot write to the module constant. */
-export const DIALS: Dials = { rest: { ...REST_POSE }, attend: rad(10) };
+export const DIALS: Dials = {
+  rest: { ...REST_POSE },
+  attend: rad(10),
+  close: rad(12),
+  // A scene is three beats, so the close arrives on the last of them.
+  closeOver: 2
+};
 
-/** The poses that exist. */
-export type PoseName = 'rest' | 'attend';
+/** What the state asks the camera for. */
+export interface Pose {
+  /** Somebody is at the rim. */
+  attend: boolean;
+  /** Beats elapsed in the scene they are at the rim for. */
+  beats: number;
+}
 
-/** Which pose the state asks for. */
-export const poseOf = (state: ShaftState): PoseName => (state.occupied ? 'attend' : 'rest');
+/**
+ * What the state asks for, given how many beats the scene has run. Outside a
+ * scene there is nothing to close on, whatever the count says.
+ */
+export const poseOf = (state: ShaftState, beats: number): Pose =>
+  state.occupied ? { attend: true, beats: Math.max(0, beats) } : { attend: false, beats: 0 };
 
-/** Where that pose stands. */
-export function cameraFor(name: PoseName, dials: Dials): Camera {
+export const samePose = (a: Pose, b: Pose): boolean =>
+  a.attend === b.attend && a.beats === b.beats;
+
+/**
+ * Where that pose stands. Narrowing the field is exactly a scale about the
+ * frame's centre under this lens — the shape on screen does not change, the
+ * frame holds less of the bowed periphery — so `close` is a push-in and the
+ * straightening is what a push-in looks like.
+ */
+export function cameraFor(pose: Pose, dials: Dials): Camera {
   const { rest } = dials;
-  return name === 'attend' ? { ...rest, pitch: rest.pitch + dials.attend } : { ...rest };
+  const shut = Math.min(1, pose.beats / dials.closeOver);
+  return {
+    ...rest,
+    pitch: rest.pitch + (pose.attend ? dials.attend : 0),
+    fov: rest.fov - shut * dials.close
+  };
 }
 
 /** Smoothstep, so a move leaves and arrives at rest rather than at speed. */

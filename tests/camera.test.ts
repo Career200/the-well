@@ -19,38 +19,63 @@ const STATE: ShaftState = {
   reach: 0,
 };
 
-describe('which pose the state asks for', () => {
-  it('rests until somebody is at the rim', () => {
-    expect(poseOf(STATE)).toBe('rest');
-    expect(poseOf({ ...STATE, occupied: true })).toBe('attend');
+const AT_RIM = { ...STATE, occupied: true };
+
+describe('what the state asks for', () => {
+  it('asks for nothing until somebody is at the rim', () => {
+    expect(poseOf(STATE, 0)).toEqual({ attend: false, beats: 0 });
+    expect(poseOf(AT_RIM, 0)).toEqual({ attend: true, beats: 0 });
+  });
+
+  it('counts the beats of the scene they are at the rim for', () => {
+    expect(poseOf(AT_RIM, 2).beats).toBe(2);
+  });
+
+  it('has nothing to close on outside a scene, whatever the count says', () => {
+    expect(poseOf(STATE, 5)).toEqual({ attend: false, beats: 0 });
   });
 
   it('lets go of them on the way out, holding no pose for the exit', () => {
-    expect(poseOf({ ...STATE, occupied: false, leaving: true })).toBe('rest');
+    expect(poseOf({ ...STATE, leaving: true }, 3)).toEqual({ attend: false, beats: 0 });
   });
 
   it('is not moved by the levers inside a scene', () => {
-    const busy = { ...STATE, occupied: true, recoil: 2 as const, resonating: 'ring', reach: 1 };
-    expect(poseOf(busy)).toBe('attend');
+    const busy = { ...AT_RIM, recoil: 2 as const, resonating: 'ring', reach: 1 };
+    expect(poseOf(busy, 1)).toEqual({ attend: true, beats: 1 });
   });
 });
 
 describe('where a pose stands', () => {
+  const at = (attend: boolean, beats: number) => cameraFor({ attend, beats }, DIALS);
+
   it('rests where the rest pose does', () => {
-    expect(cameraFor('rest', DIALS)).toEqual(REST_POSE);
+    expect(at(false, 0)).toEqual(REST_POSE);
   });
 
-  it('comes up by the attend dial and moves nothing else', () => {
-    const at = cameraFor('attend', DIALS);
-    expect(at.pitch).toBeCloseTo(DIALS.rest.pitch + DIALS.attend);
-    expect(at.fov).toBe(DIALS.rest.fov);
-    expect(at.eye).toBe(DIALS.rest.eye);
-    expect(at.wall).toBe(DIALS.rest.wall);
+  it('comes up by the attend dial, and only in pitch', () => {
+    const up = at(true, 0);
+    expect(up.pitch).toBeCloseTo(DIALS.rest.pitch + DIALS.attend);
+    expect(up.fov).toBe(DIALS.rest.fov);
+    expect(up.eye).toBe(DIALS.rest.eye);
+    expect(up.wall).toBe(DIALS.rest.wall);
+  });
+
+  it('narrows the field over the beats, and only the field', () => {
+    const half = at(true, DIALS.closeOver / 2);
+    const shut = at(true, DIALS.closeOver);
+    expect(half.fov).toBeCloseTo(DIALS.rest.fov - DIALS.close / 2);
+    expect(shut.fov).toBeCloseTo(DIALS.rest.fov - DIALS.close);
+    // The tilt is the same throughout: the two poses add rather than replace.
+    expect(shut.pitch).toBeCloseTo(at(true, 0).pitch);
+  });
+
+  it('closes no further than a full close, however long the scene runs', () => {
+    expect(at(true, DIALS.closeOver * 4).fov).toBeCloseTo(DIALS.rest.fov - DIALS.close);
   });
 
   it('hands back a copy, so the dials survive the pose', () => {
-    const at = cameraFor('rest', DIALS);
-    at.pitch = 99;
+    const stood = at(false, 0);
+    stood.pitch = 99;
     expect(DIALS.rest.pitch).not.toBe(99);
   });
 });

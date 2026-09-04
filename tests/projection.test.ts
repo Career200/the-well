@@ -40,6 +40,32 @@ describe('the rails the picture hangs on', () => {
   }
 });
 
+describe('the opening', () => {
+  for (const [w, h] of [
+    [800, 600],
+    [390, 844],
+  ] as const) {
+    it(`reads as a coin at ${w}x${h}`, () => {
+      const project = projector(REST_POSE, WELL, { w, h });
+      const box = extent(ring(WELL.height, WELL, 128), project);
+      expect(box).not.toBeNull();
+      const { left, right, top, bottom } = box!;
+      // Centred, since the camera has no yaw.
+      expect((left + right) / 2).toBeCloseTo(w / 2);
+      // Round enough to be a hole rather than a slot: the shaft is
+      // foreshortened but the lens is not.
+      const rx = (right - left) / 2;
+      const ry = (bottom - top) / 2;
+      expect(rx / ry).toBeGreaterThan(1);
+      expect(rx / ry).toBeLessThan(1.5);
+      // It fits the width, and the pitch crops a little off the top.
+      expect(left).toBeGreaterThan(0);
+      expect(right).toBeLessThan(w);
+      expect(top).toBeLessThan(0);
+    });
+  }
+});
+
 describe('camSpace', () => {
   it('drops a level forward point below the axis when the camera looks up', () => {
     const eye = eyeAt(REST_POSE, WELL);
@@ -121,7 +147,7 @@ describe('extent', () => {
       { x: 0, y: 0, z: 0 },
       { x: 1, y: 0, z: 0 },
     ];
-    const only = (p: Point) => (p.x === 0 ? { x: 0, y: 7 } : null);
-    expect(extent(pts, only)).toEqual({ top: 7, bottom: 7 });
+    const only = (p: Point) => (p.x === 0 ? { x: 3, y: 7 } : null);
+    expect(extent(pts, only)).toEqual({ left: 3, right: 3, top: 7, bottom: 7 });
   });
 });

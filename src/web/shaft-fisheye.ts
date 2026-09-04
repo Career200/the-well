@@ -1,7 +1,7 @@
 /**
- * The shaft as one SVG, through a fisheye lens: the rim, the waterline, the
- * silt edge and the stonework between them, drawn as polylines from a camera
- * standing on the floor with its back to the wall.
+ * The shaft as one SVG, through a fisheye lens: the opening, the waterline,
+ * the silt edge and the stonework between them, drawn as polylines from a
+ * camera standing on the floor with its back to the wall.
  *
  * One camera pose, held. `lucidity` sets how finely the bowing is subdivided
  * as well as the haze over it; per-place reveal is `resolve`.
@@ -16,7 +16,8 @@ import { COURSES, JOINT_STEPS, RING_STEPS, SILT_RINGS, stepOf, WALLS } from './g
 import { extent, eyeAt, joint, polyline, projector, REST_POSE, ring, WELL } from './projection.js';
 import type { Frame, Point, Project } from './projection.js';
 import type { Bands, PlaceId, Shaft, ShaftOptions, ShaftState } from './shaft.js';
-import { attrs, hash, lerp, svgEl } from './svg.js';
+import { OCCLUDED, skyGlow, skyLight } from './sky.js';
+import { attrs, clamp01, hash, lerp, svgEl } from './svg.js';
 
 /**
  * Joints around the full circle, from the far-wall count. The flat picture
@@ -27,6 +28,14 @@ const jointsAt = (grain: number): number => 2 * (WALLS[grain]! - 1);
 
 /** Share of a floor cell one speck fills, low to high over its own noise. */
 const SPECK_FILL = [0.3, 0.8] as const;
+
+/**
+ * The sky's signal disc, as a share of the rim's shorter projected half-axis,
+ * and how far it travels as a share of each. The opening is near-round under
+ * this lens, so the orbit is the same share both ways.
+ */
+const MOON = 0.14;
+const ORBIT = 0.72;
 
 /** How far the floor stirs with the water, and how fast the wave crosses it. */
 const HEAVE = 0.14;
@@ -50,6 +59,17 @@ export function makeFisheyeShaft(host: HTMLElement, opts: ShaftOptions = {}): Sh
   const svg = svgEl('svg');
   svg.setAttribute('preserveAspectRatio', 'none'); // viewBox tracks pixel size
   svg.classList.add('scene');
+
+  const defs = svgEl('defs');
+  // The rim is a bowed polyline rather than an ellipse, so the light across
+  // the opening is placed in px off that path instead of in its bounding box.
+  const glow = skyGlow();
+  attrs(glow, { gradientUnits: 'userSpaceOnUse' });
+  const hole = svgEl('clipPath');
+  hole.id = 'sky-hole';
+  const holeShape = svgEl('path');
+  hole.append(holeShape);
+  defs.append(glow, skyLight(), hole);
 
   // ---- the walls: one set of stones, cut at the waterline ----------------
   const wallsG = svgEl('g');
@@ -78,15 +98,31 @@ export function makeFisheyeShaft(host: HTMLElement, opts: ShaftOptions = {}): Sh
   siltGrain.classList.add('silt-grain');
   siltG.append(siltEdge, siltGrain);
 
-  // ---- the sky: the lip of the opening -----------------------------------
-  const skyG = svgEl('g');
-  skyG.classList.add('sky', 'place-shape');
+  // ---- the sky: the opening, and what is through it -----------------------
+  // The lip, the coin and the hole are one path. Nothing else in the picture
+  // projects inside it — every ring below the rim lands outside it — so the
+  // sky is drawn last and covers nothing.
+  const coin = svgEl('path');
+  coin.classList.add('coin');
+  coin.setAttribute('fill', 'url(#sky-glow)');
+  const skyDisc = svgEl('ellipse');
+  skyDisc.classList.add('sky-light');
+  skyDisc.setAttribute('fill', 'url(#sky-light)');
   const rim = svgEl('path');
   rim.classList.add('rim');
   rim.setAttribute('fill', 'none');
-  skyG.append(rim);
 
-  svg.append(wallsG, waterG, siltG, skyG);
+  // The lip is stonework and stays outside the clip; the disc travels, so it
+  // needs one.
+  const through = svgEl('g');
+  through.setAttribute('clip-path', 'url(#sky-hole)');
+  through.append(coin, skyDisc);
+
+  const skyG = svgEl('g');
+  skyG.classList.add('sky', 'place-shape');
+  skyG.append(through, rim);
+
+  svg.append(defs, wallsG, waterG, siltG, skyG);
 
   const shapes: Record<PlaceId, SVGGElement> = { sky: skyG, walls: wallsG, water: waterG, silt: siltG };
   const chrome = makeChrome(shapes, opts.onPlace);
@@ -171,7 +207,11 @@ export function makeFisheyeShaft(host: HTMLElement, opts: ShaftOptions = {}): Sh
     const surfaceRing = ring(WELL.water, WELL, ringSteps);
     const floorRing = ring(0, WELL, ringSteps);
 
-    attrs(rim, { d: polyline(rimRing, project) });
+    // The lip, the coin and the clip are the same closed polyline.
+    const rimD = polyline(rimRing, project);
+    attrs(rim, { d: rimD });
+    attrs(coin, { d: rimD });
+    attrs(holeShape, { d: rimD });
     attrs(waterline, { d: polyline(surfaceRing, project) });
     attrs(siltEdge, { d: polyline(floorRing, project) });
 
@@ -199,6 +239,28 @@ export function makeFisheyeShaft(host: HTMLElement, opts: ShaftOptions = {}): Sh
     const rimAt = extent(rimRing, project);
     const surfaceAt = extent(surfaceRing, project);
     const floorAt = extent(floorRing, project);
+
+    // The light through the opening, placed off the rim's own box. The gradient
+    // is a circle in user space, so a transform gives it the box's aspect.
+    if (rimAt) {
+      const cx = (rimAt.left + rimAt.right) / 2;
+      const cy = (rimAt.top + rimAt.bottom) / 2;
+      const rx = Math.max(1, (rimAt.right - rimAt.left) / 2);
+      const ry = Math.max(1, (rimAt.bottom - rimAt.top) / 2);
+      attrs(glow, {
+        cx,
+        cy,
+        r: rx,
+        gradientTransform: `translate(0 ${cy.toFixed(1)}) scale(1 ${(ry / rx).toFixed(4)}) translate(0 ${(-cy).toFixed(1)})`,
+      });
+      // Round: the shaft is foreshortened but the sky through the hole is not,
+      // so a body up there is a circle on screen.
+      const moon = Math.min(rx, ry) * MOON;
+      attrs(skyDisc, { cx, cy, rx: moon, ry: moon });
+      skyDisc.style.setProperty('--orbit-x', `${(rx * ORBIT).toFixed(1)}px`);
+      skyDisc.style.setProperty('--orbit-y', `${(ry * ORBIT).toFixed(1)}px`);
+    }
+
     bands = {
       skyBottom: rimAt?.bottom ?? 0,
       waterTop: surfaceAt?.top ?? h,
@@ -226,7 +288,13 @@ export function makeFisheyeShaft(host: HTMLElement, opts: ShaftOptions = {}): Sh
     }
 
     chrome.agitate(state, clock.agitation);
-    veil(svg, state);
+
+    // The light a body over the hole keeps out. The coin loses opacity; the
+    // shaft loses brightness, the hole being the only light it has.
+    const shut = clamp01(state.occlusion);
+    coin.style.opacity = String(1 - shut * OCCLUDED.coin);
+    veil(svg, state, shut * OCCLUDED.room);
+
     chrome.places(state);
   }
 

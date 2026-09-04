@@ -207,26 +207,26 @@ purpose, for as long as it lasts.
 `web/projection.ts` holds the lens and the well as geometry, with no DOM and its
 own tests. `web/shaft-fisheye.ts` draws rim, waterline, silt edge, joints cut at
 the surface, courses, and the floor grain, at one held pose. `web/chrome.ts`
-holds what both pictures share — corners, tap targets, reveal, `veil` — and
-`web/clock.ts` the agitation. The motion selector in `shaft-debug.ts` swaps the
-two views; the camera is what it opens on.
+holds what both pictures share — corners, tap targets, reveal, `veil` —
+`web/sky.ts` the light through the opening, and `web/clock.ts` the agitation.
+The motion selector in `shaft-debug.ts` swaps the two views; the camera is what
+it opens on.
+
+The opening is a filled region: one projected rim polyline serves as the lip,
+the coin and the clip, with `sky-glow` placed in px off its own box and the
+signal disc orbiting inside it. Every ring below the rim projects outside that
+outline, so the sky draws last and covers nothing. Occlusion takes the coin's
+opacity and the picture's brightness. The rim's box is 1.18:1 at every viewport
+and the pitch crops about 1% of height off its top edge.
 
 Provisional: `bands` is the screen extremes of the three rings, enough to stack
-the tap targets and nothing more.
+the tap targets and nothing more. The halo pooling under the lip is not drawn —
+it is light on the upper wall and may want to be real rather than a screen-space
+ellipse.
 
 ---
 
 ## Order
-
-**A. The sky, with its signal.** The opening as a filled region, the light
-through it, and the signal on it. The `sky-hole` clip takes the projected rim
-path in place of an ellipse; `sky-glow` needs `gradientUnits="userSpaceOnUse"`
-with its centre and radius read off that path; `--orbit-x` and `--orbit-y` come
-from the same extent, which is all the existing `signalling` rules need. The
-halo pooling under the hole waits — it is light on the upper wall and may want
-to be real rather than a screen-space ellipse. This stage is also what judges
-the rest pose: a rim cropped at the top does not read as a coin, and if it does
-not sit right the answer is the pitch, not the sky.
 
 **B. Pitch, on scene start.** The camera becomes state the renderer holds rather
 than a constant it reads. Two things follow. `layout` splits into reprojecting

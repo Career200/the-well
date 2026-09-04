@@ -155,18 +155,27 @@ export function polyline(pts: readonly Point[], project: Project): string {
   return d;
 }
 
+/** Screen box of a projected polyline, in px. */
+export interface Extent {
+  left: number;
+  right: number;
+  top: number;
+  bottom: number;
+}
+
 /** Screen extent of a projected polyline, or null if none of it lands. */
-export function extent(
-  pts: readonly Point[],
-  project: Project
-): { top: number; bottom: number } | null {
+export function extent(pts: readonly Point[], project: Project): Extent | null {
+  let left = Infinity;
+  let right = -Infinity;
   let top = Infinity;
   let bottom = -Infinity;
   for (const p of pts) {
     const s = project(p);
     if (!s) continue;
+    if (s.x < left) left = s.x;
+    if (s.x > right) right = s.x;
     if (s.y < top) top = s.y;
     if (s.y > bottom) bottom = s.y;
   }
-  return top === Infinity ? null : { top, bottom };
+  return top === Infinity ? null : { left, right, top, bottom };
 }

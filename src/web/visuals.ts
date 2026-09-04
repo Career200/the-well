@@ -18,6 +18,7 @@ import { makeChrome, veil } from './chrome.js';
 import { makeClock } from './clock.js';
 import { COURSES, DOT_SPACING, stepOf, WALLS } from './grain.js';
 import type { Bands, PlaceId, Shaft, ShaftOptions, ShaftState } from './shaft.js';
+import { litFalloff, LIT_CORE, OCCLUDED, skyGlow, skyLight } from './sky.js';
 import { attrs, clamp01, gradient, hash, lerp, svgEl } from './svg.js';
 
 /**
@@ -41,27 +42,6 @@ const RIM_MAX = 150;
  */
 const RIM_TOP_VS_HEIGHT = 0.028;
 const RIM_TOP_MAX = 22;
-/**
- * Light falloff across the opening, as gradient stops. The figure is masked
- * with the same numbers, so its silhouette ends where the light does.
- */
-const LIT_FALLOFF = [
-  ['0%', 1],
-  ['34%', 0.97],
-  ['57%', 0.62],
-  ['83%', 0.34],
-  ['100%', 0.18],
-] as const;
-/** Share of the rim radius the light fills. Sizes the figure. */
-const LIT_CORE = 0.57;
-
-/**
- * What a fully occluding figure costs: opacity off the halo and the coin, and
- * brightness off the whole picture, the hole being its only light. The coin
- * keeps most of its own, since it is what the silhouette is read against.
- */
-const OCCLUDED = { halo: 0.8, coin: 0.22, room: 0.16 } as const;
-
 /** Scale applied on top of the pose while leaving. */
 const LEAVE_SCALE = 0.93;
 
@@ -112,29 +92,6 @@ export function makeShaft(host: HTMLElement, opts: ShaftOptions = {}): Shaft {
   svg.classList.add('scene');
 
   const defs = svgEl('defs');
-  // The opening and the coin are one ellipse; the falloff sizes the coin.
-  const skyGlow = gradient('sky-glow', 'radialGradient', [
-    [LIT_FALLOFF[0]![0], '#fffdf2', LIT_FALLOFF[0]![1]],
-    [LIT_FALLOFF[1]![0], '#f7e6ad', LIT_FALLOFF[1]![1]],
-    [LIT_FALLOFF[2]![0], '#e0c983', LIT_FALLOFF[2]![1]],
-    [LIT_FALLOFF[3]![0], '#c0a765', LIT_FALLOFF[3]![1]],
-    [LIT_FALLOFF[4]![0], '#9c8347', LIT_FALLOFF[4]![1]],
-  ]);
-  // The same profile in white, as a mask: the figure ends where the coin does.
-  const litFalloff = gradient(
-    'lit-falloff',
-    'radialGradient',
-    LIT_FALLOFF.map(([offset, alpha]) => [offset, '#ffffff', alpha] as const),
-  );
-  // The sky's signal: a cold disc crossing the opening. Alpha is held almost
-  // to the edge and dropped over the last sixth, so it has a rim and reads as
-  // a body up there rather than as a smear of light.
-  const skyLightGlow = gradient('sky-light', 'radialGradient', [
-    ['0%', '#f8fafd', 0.94],
-    ['64%', '#edf1f8', 0.88],
-    ['87%', '#dbe3ef', 0.66],
-    ['100%', '#c3d0e0', 0],
-  ]);
   // Light pooling around the hole it comes through.
   const underGlow = gradient('under-glow', 'radialGradient', [
     ['0%', '#f7e6ad', 0.3],
@@ -176,7 +133,7 @@ export function makeShaft(host: HTMLElement, opts: ShaftOptions = {}): Shaft {
   const litShape = svgEl('ellipse');
   litShape.setAttribute('fill', 'url(#lit-falloff)');
   litMask.append(litShape);
-  defs.append(skyGlow, skyLightGlow, litFalloff, underGlow, wallGlow, waterGlow, siltFill, hole, litMask);
+  defs.append(skyGlow(), skyLight(), litFalloff(), underGlow, wallGlow, waterGlow, siltFill, hole, litMask);
 
   // ---- the walls: one set of stones, cut at the waterline ----------------
   const wallsG = svgEl('g');
@@ -222,9 +179,9 @@ export function makeShaft(host: HTMLElement, opts: ShaftOptions = {}): Shaft {
   const halo = svgEl('ellipse');
   halo.classList.add('halo');
   halo.setAttribute('fill', 'url(#under-glow)');
-  const skyLight = svgEl('ellipse');
-  skyLight.classList.add('sky-light');
-  skyLight.setAttribute('fill', 'url(#sky-light)');
+  const skyDisc = svgEl('ellipse');
+  skyDisc.classList.add('sky-light');
+  skyDisc.setAttribute('fill', 'url(#sky-light)');
   const rim = svgEl('ellipse');
   rim.classList.add('rim');
   rim.setAttribute('fill', 'none');
@@ -240,7 +197,7 @@ export function makeShaft(host: HTMLElement, opts: ShaftOptions = {}): Shaft {
   // stays outside the clip.
   const through = svgEl('g');
   through.setAttribute('clip-path', 'url(#sky-hole)');
-  through.append(halo, coin, skyLight, figure);
+  through.append(halo, coin, skyDisc, figure);
 
   const skyG = svgEl('g');
   skyG.classList.add('sky', 'place-shape');
@@ -373,9 +330,9 @@ export function makeShaft(host: HTMLElement, opts: ShaftOptions = {}): Shaft {
     // falloff is roughly halved, so the disc has something to be pale against.
     // The orbit is px because it is a share of the rim, not of the disc.
     const moon = rimRy * 0.42;
-    attrs(skyLight, { cx, cy: rimCy, rx: moon, ry: moon });
-    skyLight.style.setProperty('--orbit-x', `${(rimRx * 0.78).toFixed(1)}px`);
-    skyLight.style.setProperty('--orbit-y', `${(rimRy * 0.5).toFixed(1)}px`);
+    attrs(skyDisc, { cx, cy: rimCy, rx: moon, ry: moon });
+    skyDisc.style.setProperty('--orbit-x', `${(rimRx * 0.78).toFixed(1)}px`);
+    skyDisc.style.setProperty('--orbit-y', `${(rimRy * 0.5).toFixed(1)}px`);
     // Sized to the lit core rather than the hole, matching the mask.
     const litRy = lit * 0.38;
     const headCy = rimCy + litRy * 0.42;

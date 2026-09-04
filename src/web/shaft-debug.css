@@ -47,7 +47,8 @@ body.shaft-debug label {
 
 body.shaft-debug label span { flex: 0 0 4.5rem; }
 body.shaft-debug label input[type='range'] { flex: 1; min-width: 0; }
-body.shaft-debug label b { flex: 0 0 2.2rem; font-weight: normal; color: var(--cold); }
+/* Wide enough for the longest readout, which is a percentage with a decimal. */
+body.shaft-debug label b { flex: 0 0 2.6rem; font-weight: normal; color: var(--cold); }
 body.shaft-debug label input[type='checkbox'] { flex: 0 0 auto; }
 
 body.shaft-debug .note { margin: 0; color: var(--cold); }

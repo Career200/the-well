@@ -8,6 +8,7 @@
  * a phone, so anything needed while watching stays on the bar.
  */
 import './shaft-debug.css';
+import { REST_POSE, WELL } from './projection.js';
 import { PLACES } from './shaft.js';
 import type { PlaceId, Shaft, ShaftFactory, ShaftState } from './shaft.js';
 import { makeFisheyeShaft } from './shaft-fisheye.js';
@@ -192,22 +193,37 @@ const group = (title: string): HTMLElement => {
   return box;
 };
 
-function slider(box: HTMLElement, label: string, key: 'lucidity' | 'charge'): void {
+/** A range with its value shown, in whatever units the dial is in. */
+interface Dial {
+  min: number;
+  max: number;
+  step: number;
+  value: number;
+  /** Decimals on the readout, and what follows the number. */
+  decimals: number;
+  unit: string;
+  onInput?: (value: number) => void;
+}
+
+function slider(box: HTMLElement, label: string, dial: Dial): void {
   const row = document.createElement('label');
   const name = document.createElement('span');
   const value = document.createElement('b');
   const input = document.createElement('input');
   input.type = 'range';
-  input.min = '0';
-  input.max = '1';
-  input.step = '0.01';
-  input.value = String(state[key]);
+  input.min = String(dial.min);
+  input.max = String(dial.max);
+  input.step = String(dial.step);
+  input.value = String(dial.value);
   name.textContent = label;
-  value.textContent = state[key].toFixed(2);
+  const show = (n: number): void => {
+    value.textContent = `${n.toFixed(dial.decimals)}${dial.unit}`;
+  };
+  show(dial.value);
   input.oninput = () => {
-    state[key] = Number(input.value);
-    value.textContent = state[key].toFixed(2);
-    sync();
+    const next = Number(input.value);
+    show(next);
+    dial.onInput?.(next);
   };
   row.append(name, input, value);
   box.append(row);
@@ -229,8 +245,38 @@ function toggle(box: HTMLElement, label: string, get: () => boolean, set: (on: b
 }
 
 const stats = group('state');
-slider(stats, 'lucidity', 'lucidity');
-slider(stats, 'charge', 'charge');
+const scalar = (label: string, key: 'lucidity' | 'charge'): void =>
+  slider(stats, label, {
+    min: 0,
+    max: 1,
+    step: 0.01,
+    value: state[key],
+    decimals: 2,
+    unit: '',
+    onInput: (n) => {
+      state[key] = n;
+      sync();
+    },
+  });
+scalar('lucidity', 'lucidity');
+scalar('charge', 'charge');
+
+// The projection's own dials, in the units the dimensions table in
+// `docs/SHAFT_UI_PLAN.md` uses, opening on what the renderer currently holds.
+// Inert: the camera is one held pose and the water one held level, and taking
+// either from here is its own step.
+const dials = group('projection');
+const deg = (rad: number): number => (rad * 180) / Math.PI;
+slider(dials, 'tilt', { min: 0, max: 60, step: 1, value: Math.round(deg(REST_POSE.pitch)), decimals: 0, unit: '°' });
+slider(dials, 'fov', { min: 70, max: 175, step: 1, value: Math.round(deg(REST_POSE.fov)), decimals: 0, unit: '°' });
+slider(dials, 'waterline', {
+  min: 0,
+  max: 30,
+  step: 0.5,
+  value: (WELL.water / WELL.height) * 100,
+  decimals: 1,
+  unit: '%',
+});
 
 const places = group('places');
 for (const id of PLACES) {

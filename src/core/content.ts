@@ -28,12 +28,15 @@ export interface ObjectDef {
   discovered?: boolean;
 }
 
-/** The village read back to the presence. Carries no effects. */
+/**
+ * The village read back to the presence. Carries no effects. Each band is a
+ * pool; the engine picks one line from it.
+ */
 export interface Readout {
-  beliefs: Record<Belief, string>;
+  beliefs: Record<Belief, string[]>;
   /** Two bands: over `READOUT_FLOOR`, then over `READOUT_LOUD`. */
-  attention: [string, string];
-  dread: [string, string];
+  attention: [string[], string[]];
+  dread: [string[], string[]];
 }
 
 /** Lines the engine itself speaks, for actions and for the stop. */

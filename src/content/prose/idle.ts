@@ -21,18 +21,58 @@ export const ambient = [
  */
 export const readout: Readout = {
   beliefs: {
-    haunted: 'Somebody says a prayer over the water before they draw it.',
-    mystery: 'Somebody drops a stone in and count. They do it three times, and get it different each time.',
-    tragedy: 'There are flowers on the rim for a long time. When they die, new ones appear.',
-    danger: "You hear footsteps approach, then nothing, and then they leave. They didn't dare get closer.",
+    haunted: [
+      'Somebody says a prayer over the water before they draw it.',
+      'A woman crosses herself and then works the winch anyway.',
+      'There is salt along the rim, laid in a line the whole way round.',
+      'Somebody reads aloud over the water for a long while and draws nothing.',
+    ],
+    mystery: [
+      'Somebody drops a stone in and counts. They do it three times, and get it different each time.',
+      'Two of them argue above about how deep it goes.',
+      "A rope comes down past you with a knot at every arm's length, and goes back up.",
+      'Somebody lowers a lamp on a string. It stops well short of the water and hangs there for some time.',
+    ],
+    tragedy: [
+      'There are flowers on the rim for a long time. When they die, new ones appear.',
+      'A woman sits at the rim through the middle of the day and draws nothing.',
+      'Someone came alone, stood silent above the water, and then left.',
+      'There is a shadow travelling across the rim every day. A new shape somewhere next to the coin of the sky.',
+    ],
+    danger: [
+      "You hear footsteps approach, then nothing, and then they leave. They didn't dare get closer.",
+      "You expected someone to come for the water long ago, but there's only the cold.",
+      "There is a plank across the mouth. You can't remember who put it there",
+      'Somebody shouts at a child by the rim. The child is taken away.',
+    ],
   },
   attention: [
-    'Three people came up to the rim today. One of them drew water.',
-    'There is somebody at the rim most of the day now.',
+    [
+      'Three people came up to the rim today. One of them drew water.',
+      'Two came and looked in and drew nothing.',
+      'There is talking above, longer than it takes to fill a bucket.',
+      'Somebody has been up to the rim twice since morning.',
+    ],
+    [
+      'There is somebody at the rim most of the day now.',
+      'The light at the mouth keeps being broken by heads.',
+      'They come in twos and threes now, and stand about.',
+      'The talking above has not stopped since morning.',
+    ],
   ],
   dread: [
-    'The bucket comes down faster than it used to and goes up before it is full.',
-    'Two came for water. Neither would work the winch, and they went down to the stream instead.',
+    [
+      'The bucket comes down faster than it used to and goes up before it is full.',
+      'Somebody draws water without looking down.',
+      'A child is pulled back from the rim by the arm.',
+      'The bucket knocks the wall twice going down. Nobody steadies it.',
+    ],
+    [
+      'Two came for water. Neither would work the winch, and they went down to the stream instead.',
+      'Nobody has drawn from here since yesterday.',
+      'The bucket has been left down at the water for a day and a night.',
+      "The cover goes on, and a stone on top of that. It's dark for some time.",
+    ],
   ],
 };
 
@@ -47,4 +87,5 @@ export const noticing = {
 export const hiding = [
   'You pull the coat over yourself. Somebody is at the rim above you and you do not look up.',
   'You stay under the coat until the noise above has stopped.',
+  'You hide again, but still see glimpses through the hole.'
 ];

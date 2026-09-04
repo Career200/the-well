@@ -53,8 +53,6 @@ export interface BelowPhase {
   exhausted: boolean;
   /** Consecutive turns that narrated nothing. See `BELOW_TUNING.quietRun`. */
   quiet: number;
-  /** Every line already said down here. Nothing is ever said twice. */
-  said: string[];
   /**
    * World-clock lines that did not fit their turn's budget, oldest first. They
    * keep their order, so the ambient five resolve as written.
@@ -99,20 +97,8 @@ export function startBelow(pick: () => number, belongingIds: readonly ObjectId[]
     wasLow: false,
     exhausted: false,
     quiet: 0,
-    said: [],
     pending: [],
   };
-}
-
-/** Drops any line already said in this phase. Beat zero only. */
-export function unsaid(phase: BelowPhase, lines: readonly string[]): { phase: BelowPhase; keep: boolean[] } {
-  const said = new Set(phase.said);
-  const keep = lines.map((text) => {
-    if (said.has(text)) return false;
-    said.add(text);
-    return true;
-  });
-  return { phase: { ...phase, said: [...said] }, keep };
 }
 
 /**

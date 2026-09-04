@@ -47,6 +47,7 @@ function dump(game: Game): object {
       ]),
     ),
     flags: Object.keys(s.flags).filter((f) => s.flags[f]),
+    said: Object.fromEntries(Object.entries(game.ledger).map(([channel, lines]) => [channel, lines.length])),
     played: s.history.map((h) => `${h.scene}:${h.outcome}@${h.turn}`),
   };
 }
@@ -82,7 +83,7 @@ function mode(game: Game): object {
     case 'over':
       return { kind: m.kind, door: m.door, spine: m.spine };
     default:
-      return { kind: m.kind, lastAmbient: m.lastAmbient, lastReadout: m.lastReadout };
+      return { kind: m.kind };
   }
 }
 

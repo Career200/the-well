@@ -14,10 +14,11 @@ import {
   fillSilence,
   lookBelow,
   startBelow,
-  tierOf,
-  unsaid
+  tierOf
 } from "./below.js";
 import { erode, resolveCoda, verdictOf } from "./coda.js";
+import { choose, EMPTY_LEDGER, filter as unsaid } from "./ledger.js";
+import type { Ledger } from "./ledger.js";
 import type { CodaContext, Door } from "./coda.js";
 import type { BelowEvent, BelowPhase, Tier } from "./below.js";
 import { BELIEF_OF_EMOTION, BELIEFS } from "./types.js";
@@ -122,8 +123,7 @@ const spoken = (
 const idle = (text: string): NarrationLine => ({ kind: "idle", text });
 
 export type Mode =
-  /** `lastAmbient` and `lastReadout` are the lines this mode must not repeat. */
-  | { kind: "idle"; lastAmbient?: string; lastReadout?: string }
+  | { kind: "idle" }
   | { kind: "scene"; scene: SceneId; ctx: SceneContext }
   /** Beat zero. See `core/below.ts`. */
   | { kind: "below"; phase: BelowPhase }
@@ -138,12 +138,27 @@ export interface Game {
   state: WorldState;
   mode: Mode;
   rng: Rng;
+  /** What has been said lately. See `core/ledger.ts`. */
+  ledger: Ledger;
+  /** Turn of the last readout. `READOUT_GAP` is the minimum spacing. */
+  lastRead?: number;
 }
 
 export interface StepResult {
   game: Game;
   /** Narration for this step, ordered, each line carrying its register. */
   lines: NarrationLine[];
+}
+
+/**
+ * `lines` is what happened: scene beats, outcomes, whoever arrived. `after` is
+ * the readout and the empty-turn line. They are separate because the action's
+ * closing falls between them — see the phases in `step`.
+ */
+interface Answer {
+  game: Game;
+  lines: NarrationLine[];
+  after: NarrationLine[];
 }
 
 /**
@@ -210,7 +225,13 @@ export function newGame(
   const state = initWorld(pack, seed);
 
   if (opts?.below && phase)
-    return { pack, state, mode: { kind: "below", phase }, rng };
+    return {
+      pack,
+      state,
+      mode: { kind: "below", phase },
+      rng,
+      ledger: EMPTY_LEDGER
+    };
 
   // Skipping the phase still starts after it: hand over the two belongings
   // beat zero would have given.
@@ -227,7 +248,8 @@ export function newGame(
       }))
     ),
     mode: { kind: "idle" },
-    rng
+    rng,
+    ledger: EMPTY_LEDGER
   };
 }
 
@@ -373,10 +395,16 @@ export function step(game: Game, action: PlayerAction): StepResult {
   const said = game.pack.presence;
   const before = runStatus(game).kind;
   const lucidityBefore = game.state.presence.lucidity;
-  /** What the action opens the beat with, before the world answers. */
-  const lines: NarrationLine[] = [];
-  /** And what it closes with, after. The world's turn happens between them. */
-  const closing: NarrationLine[] = [];
+  /**
+   * A beat is read in four phases, in this order:
+   *
+   *   opening   what the action says as it begins
+   *   answer    what the world does about it        (`Answer.lines`)
+   *   closing   the action finishing, once it has
+   *   after     what is said about the beat, now it is over (`Answer.after`)
+   */
+  let opening: NarrationLine[] = [];
+  let closing: NarrationLine[] = [];
   let next: Game = withState(game, {
     ...game.state,
     turn: game.state.turn + 1
@@ -399,16 +427,16 @@ export function step(game: Game, action: PlayerAction): StepResult {
       if (isAmbient(action.object)) {
         // A place is not asked while somebody is at the rim.
         if (next.mode.kind === "scene") {
-          lines.push(fact(said.busy));
+          opening.push(fact(said.busy));
           break;
         }
         if (next.state.flags[OPEN(action.object)] !== true) {
           // Asking a place with nothing to say still costs the beat.
-          lines.push(idle(NOTHING_NEW));
+          opening.push(idle(NOTHING_NEW));
           break;
         }
         // No lucidity is spent: the tier is the count of belongings looked at.
-        lines.push(
+        opening.push(
           spoken(
             next,
             action.object,
@@ -430,18 +458,18 @@ export function step(game: Game, action: PlayerAction): StepResult {
       }
       const def = objectDef(next, action.object);
       if (!def || !next.state.objects[action.object]?.found) {
-        lines.push(fact(said.noSuchThing));
+        opening.push(fact(said.noSuchThing));
         break;
       }
       if (next.mode.kind === "below") {
         const phase = lookBelow(next.mode.phase, def.id);
         if (!phase) {
-          lines.push(fact(said.nothingToSee));
+          opening.push(fact(said.nothingToSee));
           break;
         }
         next = { ...next, mode: { kind: "below", phase } };
       }
-      lines.push(
+      opening.push(
         spoken(next, def.id, subjectAt(next, def.id, true) ?? def.name)
       );
       const wasNew = !next.state.objects[def.id]?.discovered;
@@ -466,15 +494,15 @@ export function step(game: Game, action: PlayerAction): StepResult {
       const def = objectDef(next, action.object);
       const obj = def ? next.state.objects[def.id] : undefined;
       if (!def || !obj || !obj.found) {
-        lines.push(fact(said.noSuchThing));
+        opening.push(fact(said.noSuchThing));
         break;
       }
       if (!obj.discovered) {
-        lines.push(fact(said.notLookedAt));
+        opening.push(fact(said.notLookedAt));
         break;
       }
       if (obj.charge <= TUNING.spent) {
-        lines.push(fact(said.spentBelonging));
+        opening.push(fact(said.spentBelonging));
         break;
       }
       // One use, paid for once, on this beat.
@@ -486,22 +514,15 @@ export function step(game: Game, action: PlayerAction): StepResult {
         ])
       );
       used = def.id;
-      lines.push(
+      opening.push(
         spoken(
           next,
           def.id,
           def.hold?.[use] ?? said.holdFallback.replace("{thing}", def.name)
         )
       );
-      // A scene answers back, so the use is held across that answer: taken up,
-      // the beat happens, set down. At an empty rim the two halves stay
-      // together, and beat zero counts its lines.
       const cooling = def.release?.[use];
-      if (cooling) {
-        const line = spoken(next, def.id, cooling);
-        if (next.mode.kind === "scene") closing.push(line);
-        else lines.push(line);
-      }
+      if (cooling) closing.push(spoken(next, def.id, cooling));
       // Only reaches a scene. Kept for the rest of it, like `pressure`.
       if (next.mode.kind === "scene") {
         const scene = sceneById(next, next.mode.scene);
@@ -522,7 +543,7 @@ export function step(game: Game, action: PlayerAction): StepResult {
     case "haunt": {
       if (next.state.presence.charge < TUNING.pressCost) {
         const taught = next.state.flags[HAS_BEEN_REFUSED] === true;
-        lines.push(
+        opening.push(
           fact(
             taught ? said.tooThin[1 + (next.state.turn % 2)]! : said.tooThin[0]
           )
@@ -539,7 +560,7 @@ export function step(game: Game, action: PlayerAction): StepResult {
       }
       const pushed = press(next);
       next = pushed.game;
-      lines.push(...pushed.lines);
+      opening.push(...pushed.lines);
       pressed = true;
       exhausted = pushed.exhausted;
       break;
@@ -558,7 +579,7 @@ export function step(game: Game, action: PlayerAction): StepResult {
   }
 
   // 3. Only then does the world get its turn.
-  let result: StepResult;
+  let answer: Answer;
   // Coat mid-scene resolves the scene where it stands: the outcome is taken and
   // spent, and only its line is withheld. `unhidable` scenes opt out and play
   // their remaining beats, where the coat is a resonance like any other.
@@ -568,73 +589,51 @@ export function step(game: Game, action: PlayerAction): StepResult {
     !sceneById(next, next.mode.scene)?.unhidable;
   const hidFrom = hiding ? hideUnderTheCoat(next) : undefined;
   if (hidFrom && next.mode.kind === "scene") {
+    // The hiding line is the action's, not the world's.
+    opening.push(...hidFrom.lines);
     const playing = sceneById(next, next.mode.scene);
-    result = playing
-      ? resolveScene(
-          hidFrom.game,
-          playing,
-          next.mode.ctx,
-          [...lines, ...hidFrom.lines],
-          true
-        )
+    answer = playing
+      ? resolveScene(hidFrom.game, playing, next.mode.ctx, true)
       : {
           game: { ...hidFrom.game, mode: { kind: "idle" } },
-          lines: [...lines, ...hidFrom.lines]
+          lines: [],
+          after: []
         };
   } else if (next.mode.kind === "scene") {
-    result = advanceScene(next, lines);
+    answer = advanceScene(next);
   } else if (next.mode.kind === "below") {
-    result = advanceBelowMode(next, lines, {
+    // Beat zero counts a turn's lines against its budget, so both halves go in.
+    const acted = [...opening, ...closing];
+    opening = [];
+    closing = [];
+    answer = advanceBelowMode(next, acted, {
       pressedThisTurn: pressed,
       exhaustedThisTurn: exhausted
     });
   } else {
-    const wasIdle = next.mode.kind === "idle" ? next.mode : undefined;
-    const started = maybeStartScene(next, ...(used ? [{ used }] : []));
-    let game = started.game;
-    const woken =
-      started.lines.length === 0 && lines.length === 0
-        ? openSubject(game)
-        : undefined;
-    if (woken) {
-      game = woken.game;
-      lines.push(idle(woken.line));
-    } else if (started.lines.length === 0 && lines.length === 0) {
-      const heard = readout(game, wasIdle?.lastReadout);
-      const line = heard?.line ?? ambient(next, wasIdle?.lastAmbient);
-      lines.push(idle(line));
-      const lastAmbient = heard ? wasIdle?.lastAmbient : line;
-      const lastReadout = heard?.key ?? wasIdle?.lastReadout;
-      if (game.mode.kind === "idle") {
-        game = {
-          ...game,
-          mode: {
-            kind: "idle",
-            ...(lastAmbient ? { lastAmbient } : {}),
-            ...(lastReadout ? { lastReadout } : {})
-          }
-        };
-      }
-    }
-    result = { game, lines: [...lines, ...started.lines] };
+    answer = advanceIdle(next, {
+      spoke: opening.length + closing.length > 0,
+      ...(used ? { used } : {})
+    });
   }
 
-  // 3a. The action finishes, now that the world has answered it.
-  result = { ...result, lines: [...result.lines, ...closing] };
+  // 3a. Phase order.
+  next = answer.game;
+  const lines = [...opening, ...answer.lines, ...closing, ...answer.after];
 
   // 3b. A move in lucidity, in either direction, queues one of the five. It
   //     comes out on some later quiet turn.
   if (
-    result.game.mode.kind !== "below" &&
-    result.game.state.presence.lucidity !== lucidityBefore
+    next.mode.kind !== "below" &&
+    next.state.presence.lucidity !== lucidityBefore
   ) {
-    result = { ...result, game: queueSubject(result.game) };
+    next = queueSubject(next);
   }
 
   // 4. And then, if nothing is left, the run says what it was.
-  const door = doorOut(result.game);
-  if (door && result.game.pack.coda) {
-    const coda = result.game.pack.coda;
+  const door = doorOut(next);
+  if (door && next.pack.coda) {
+    const coda = next.pack.coda;
     const read = (state: WorldState): CodaContext => ({
       state,
       door,
@@ -642,7 +641,7 @@ export function step(game: Game, action: PlayerAction): StepResult {
       tier: tierOf(state.presence.lucidity, false)
     });
 
-    let state = result.game.state;
+    let state = next.state;
     let told = resolveCoda(coda, read(state));
 
     // `forgotten` takes lucidity first, so the close drops to `veiled` and the
@@ -650,31 +649,40 @@ export function step(game: Game, action: PlayerAction): StepResult {
     if (told.spine === "forgotten") {
       state = { ...state, presence: { ...state.presence, lucidity: 0 } };
       told = resolveCoda(coda, read(state));
-      told = {
-        ...told,
-        lines: erode(told.lines, () => result.game.rng.next())
-      };
+      told = { ...told, lines: erode(told.lines, () => next.rng.next()) };
     }
 
-    result.lines.push(...told.lines);
     return {
-      game: {
-        ...result.game,
-        state,
-        mode: { kind: "over", door, spine: told.spine }
-      },
-      lines: result.lines
+      game: { ...next, state, mode: { kind: "over", door, spine: told.spine } },
+      lines: [...lines, ...told.lines]
     };
   }
 
   // The stop line only speaks for a run that has not ended; otherwise it
   // announces an ending the coda is about to tell properly. `quiet` is
   // unreachable here: `doorOut` returns `starved` on the same beat.
-  const after = runStatus(result.game).kind;
-  if (after !== before && !door && after === "stalled") {
-    result.lines.push(idle(said.stalled));
+  const status = runStatus(next).kind;
+  if (status !== before && !door && status === "stalled") {
+    lines.push(idle(said.stalled));
   }
-  return result;
+  return { game: next, lines };
+}
+
+/** No scene playing: start one if the roll allows, else narrate the turn. */
+function advanceIdle(
+  game: Game,
+  opts: { spoke: boolean; used?: ObjectId }
+): Answer {
+  const started = maybeStartScene(game, ...(opts.used ? [{ used: opts.used }] : []));
+  if (started.lines.length > 0 || opts.spoke)
+    return { game: started.game, lines: started.lines, after: [] };
+
+  const woken = openSubject(started.game);
+  if (woken) return { game: woken.game, lines: [], after: [idle(woken.line)] };
+
+  const heard = readout(started.game);
+  const said = heard ?? ambient(started.game);
+  return { game: said.game, lines: [], after: [idle(said.line)] };
 }
 
 /**
@@ -758,10 +766,11 @@ function press(game: Game): {
  */
 function advanceBelowMode(
   game: Game,
-  lines: NarrationLine[],
+  acted: NarrationLine[],
   input: { pressedThisTurn: boolean; exhaustedThisTurn: boolean }
-): StepResult {
-  if (game.mode.kind !== "below") return { game, lines };
+): Answer {
+  const lines = [...acted];
+  if (game.mode.kind !== "below") return { game, lines, after: [] };
 
   const { phase, events } = advanceBelow(game.mode.phase, {
     presenceCharge: game.state.presence.charge,
@@ -823,27 +832,30 @@ function advanceBelowMode(
   }
   ended = finishing;
 
-  // Nothing is said twice down here. Filtering the finished turn covers every
-  // source at once: the presence's own lines, subjects, transitions.
+  // Filters every source at once: the presence's lines, subjects, transitions.
   const guard = unsaid(
-    phase,
+    next.ledger,
+    "below",
     lines.map((line) => line.text)
   );
+  next = { ...next, ledger: guard.ledger };
   let fresh = lines.filter((_, i) => guard.keep[i]);
   const swallowed = lines.length > 0 && fresh.length === 0;
 
   // A run of silent turns eventually says something about the dark, but not
   // every gap, and never on the ending turn.
-  const silence = fillSilence(guard.phase, fresh.length > 0 || ended);
-  let settled = silence.phase;
+  const silence = fillSilence(phase, fresh.length > 0 || ended);
+  const settled = silence.phase;
   if (silence.speak && !ended) {
-    const pool = (next.pack.belowProse?.settling ?? []).filter(
-      (line) => !settled.said.includes(line)
+    const picked = choose(
+      next.ledger,
+      "below",
+      next.pack.belowProse?.settling ?? [],
+      () => next.rng.next()
     );
-    const line = pool[Math.floor(next.rng.next() * pool.length)];
-    if (line) {
-      fresh = [...fresh, idle(line)];
-      settled = { ...settled, said: [...settled.said, line] };
+    if (picked) {
+      next = { ...next, ledger: picked.ledger };
+      fresh = [...fresh, idle(picked.line)];
     }
   } else if (swallowed && !ended) {
     fresh = [idle(NOTHING_NEW)];
@@ -858,10 +870,15 @@ function advanceBelowMode(
       { force: true }
     );
     if (opened.lines.length > 0)
-      return { game: opened.game, lines: [...fresh, ...opened.lines] };
+      return {
+        game: opened.game,
+        lines: [...fresh, ...opened.lines],
+        after: []
+      };
     return {
       game: { ...next, mode: { kind: "idle" } },
-      lines: [...fresh, ...crossing]
+      lines: [...fresh, ...crossing],
+      after: []
     };
   }
 
@@ -869,7 +886,7 @@ function advanceBelowMode(
     ...next,
     mode: { kind: "below", phase: { ...settled, pending: queue } }
   };
-  return { game: next, lines: fresh };
+  return { game: next, lines: fresh, after: [] };
 }
 
 function belowEventLines(game: Game, event: BelowEvent): NarrationLine[] {
@@ -899,10 +916,11 @@ function belowEventLines(game: Game, event: BelowEvent): NarrationLine[] {
 const sceneById = (game: Game, id: SceneId): Scene | undefined =>
   game.pack.scenes.find((s) => s.id === id);
 
-function advanceScene(game: Game, lines: NarrationLine[]): StepResult {
-  if (game.mode.kind !== "scene") return { game, lines };
+function advanceScene(game: Game): Answer {
+  if (game.mode.kind !== "scene") return { game, lines: [], after: [] };
   const playing = sceneById(game, game.mode.scene);
-  if (!playing) return { game: { ...game, mode: { kind: "idle" } }, lines };
+  if (!playing)
+    return { game: { ...game, mode: { kind: "idle" } }, lines: [], after: [] };
 
   const ctx: SceneContext = {
     ...game.mode.ctx,
@@ -910,20 +928,20 @@ function advanceScene(game: Game, lines: NarrationLine[]): StepResult {
   };
   const beat = playing.beats[ctx.beatIndex];
 
-  if (beat) {
-    lines.push(scene(beat.text(game.state, ctx)));
+  if (beat)
     return {
       game: { ...game, mode: { kind: "scene", scene: playing.id, ctx } },
-      lines
+      lines: [scene(beat.text(game.state, ctx))],
+      after: []
     };
-  }
 
-  return resolveScene(game, playing, ctx, lines);
+  return resolveScene(game, playing, ctx);
 }
 
 /**
  * The end of a scene: the outcome picked, its effects and the resonance
- * applied, the history written, the village given its chance to answer.
+ * applied, the history written, the village given its chance to answer. The
+ * readout goes in `after`.
  *
  * `silent` only drops the line
  */
@@ -931,11 +949,13 @@ function resolveScene(
   game: Game,
   playing: Scene,
   ctx: SceneContext,
-  lines: NarrationLine[],
   silent = false
-): StepResult {
+): Answer {
   const outcome = resolveOutcome(playing, game.state, ctx);
-  if (!silent) lines.push(scene(outcome.text(game.state, ctx)));
+  const lines: NarrationLine[] = silent
+    ? []
+    : [scene(outcome.text(game.state, ctx))];
+  const after: NarrationLine[] = [];
   const changes = [
     ...outcome.effects(game.state, ctx),
     ...resonanceEffects(game, playing, ctx)
@@ -944,22 +964,21 @@ function resolveScene(
 
   // The village, on the beat it moved. Only when the beat actually moved it:
   // an outcome that touched nobody has nothing new to be said about.
-  let mode: Mode = { kind: "idle" };
+  let next: Game = { ...game, state, mode: { kind: "idle" } };
   const moved = changes.some(
     (effect) => effect.kind === "belief" || effect.kind === "well"
   );
   if (moved && game.rng.next() < READOUT_AFTER_OUTCOME) {
-    const heard = readout({ ...game, state });
+    const heard = readout(next);
     if (heard) {
-      lines.push(idle(heard.line));
-      mode = { kind: "idle", lastReadout: heard.key };
+      next = heard.game;
+      after.push(idle(heard.line));
     }
   }
 
   return {
     game: {
-      ...game,
-      mode,
+      ...next,
       state: {
         ...state,
         history: [
@@ -968,7 +987,8 @@ function resolveScene(
         ]
       }
     },
-    lines
+    lines,
+    after
   };
 }
 
@@ -1018,10 +1038,12 @@ const READOUT_FLOOR = 0.2;
 const READOUT_LOUD = 0.6;
 /** How often an outcome that moved the village is followed by them saying so. */
 const READOUT_AFTER_OUTCOME = 0.75;
+/** Beats between one reading and the next, or it stops being a reading. */
+const READOUT_GAP = 5;
 
 /**
- * The village, said back, and only when it is not the one said last. Three
- * things it can be, in this order:
+ * The village, said back, no more often than `READOUT_GAP`. Three things it
+ * can be, in this order:
  *
  *   a loud dial     past `READOUT_LOUD`, it outranks anything they believe
  *   what they think the loudest belief, once it is past `READOUT_FLOOR`
@@ -1034,12 +1056,11 @@ const READOUT_AFTER_OUTCOME = 0.75;
  * says what it thinks the well is. It still gets to say so — but only while
  * they have not decided.
  */
-function readout(
-  game: Game,
-  avoid?: string
-): { key: string; line: string } | undefined {
+function readout(game: Game): { game: Game; line: string } | undefined {
   const lines = game.pack.readout;
   if (!lines) return undefined;
+  if (game.state.turn - (game.lastRead ?? -READOUT_GAP) < READOUT_GAP)
+    return undefined;
   const { beliefs, well } = game.state;
   const loudest = (entries: [string, number][]): [string, number] =>
     entries.sort((a, b) => b[1] - a[1])[0]!;
@@ -1061,20 +1082,25 @@ function readout(
   if (!said) return undefined;
 
   const [name, key] = said;
-  if (key === avoid) return undefined;
-  const line = key.endsWith('.1')
+  const pool = key.endsWith('.1')
     ? lines[name as "attention" | "dread"][1]
     : key.endsWith('.0')
       ? lines[name as "attention" | "dread"][0]
       : lines.beliefs[name as Belief];
-  return line ? { key, line } : undefined;
+  const picked = choose(game.ledger, `band:${key}`, pool, () => game.rng.next());
+  if (!picked) return undefined;
+  return {
+    game: { ...game, ledger: picked.ledger, lastRead: game.state.turn },
+    line: picked.line
+  };
 }
 
-/** Never the same line twice running: the pool is small. */
-function ambient(game: Game, avoid?: string): string {
-  const all = game.pack.ambient ?? [game.pack.presence.ambientFallback];
-  const pool = all.length > 1 ? all.filter((line) => line !== avoid) : all;
-  return pool[Math.floor(game.rng.next() * pool.length)] ?? "";
+/** The texture of an empty turn. */
+function ambient(game: Game): { game: Game; line: string } {
+  const pool = game.pack.ambient ?? [game.pack.presence.ambientFallback];
+  const picked = choose(game.ledger, "ambient", pool, () => game.rng.next());
+  if (!picked) return { game, line: "" };
+  return { game: { ...game, ledger: picked.ledger }, line: picked.line };
 }
 
 // ---------------------------------------------------------------------------

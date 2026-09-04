@@ -187,6 +187,32 @@ describe('belongings', () => {
     expect(lines[2]!.subjectId).toBe('ring');
   });
 
+  it('a use on the beat that ends a scene is set down before the village speaks', () => {
+    const playing = pack.scenes.find((s) => s.id === 'first-water')!;
+    const lastBeat = (seed: number): Game => {
+      const start = found(newGame(pack, seed), 'ring');
+      return {
+        ...start,
+        state: {
+          ...start.state,
+          objects: { ...start.state.objects, ring: { ...start.state.objects['ring']!, discovered: true } },
+        },
+        // One past the last beat, so this use is answered by the outcome.
+        mode: { kind: 'scene', scene: playing.id, ctx: { pressure: 0, resonance: null, beatIndex: playing.beats.length - 1 } },
+      };
+    };
+
+    // The ring's outcome moves the village, so some seed has them answer it.
+    for (let seed = 1; seed < 60; seed++) {
+      const { lines } = step(lastBeat(seed), { kind: 'attune', object: 'ring' });
+      if (!lines.some((l) => l.kind === 'idle')) continue;
+      expect(lines.map((l) => l.kind)).toEqual(['fact', 'scene', 'fact', 'idle']);
+      expect(lines[2]!.subjectId).toBe('ring');
+      return;
+    }
+    throw new Error('the village never answered the outcome');
+  });
+
   it('charge spent on a belonging never comes back', () => {
     let game = found(newGame(pack, 3), 'ring');
     game = step(game, { kind: 'look', object: 'ring' }).game;
@@ -550,10 +576,16 @@ describe('content sanity', () => {
 describe('the village, said back', () => {
   const idle = (game: Game): Game => ({ ...game, mode: { kind: 'idle' } });
   const lines = new Set([
-    ...Object.values(pack.readout!.beliefs),
-    ...pack.readout!.attention,
-    ...pack.readout!.dread,
+    ...Object.values(pack.readout!.beliefs).flat(),
+    ...pack.readout!.attention.flat(),
+    ...pack.readout!.dread.flat(),
   ]);
+
+  /** Every reading heard came out of this band, and the band did speak. */
+  const onlyFrom = (heard: Set<string>, band: readonly string[]): void => {
+    expect(heard.size).toBeGreaterThan(0);
+    expect([...heard].filter((line) => !band.includes(line))).toEqual([]);
+  };
 
   it('says nothing about a village that has not decided anything', () => {
     let game = idle(newGame(pack, 5));
@@ -574,7 +606,7 @@ describe('the village, said back', () => {
     for (let i = 0; i < 20; i++) {
       const { game: next, lines: said } = step(game, { kind: 'wait' });
       game = next;
-      const now = said.some((l) => l.text === pack.readout!.beliefs.tragedy);
+      const now = said.some((l) => pack.readout!.beliefs.tragedy.includes(l.text));
       expect(now && last).toBe(false);
       last = now;
       if (now) heard++;
@@ -596,7 +628,7 @@ describe('the village, said back', () => {
   it('says they are thinking about it while they have decided nothing', () => {
     const start = idle(newGame(pack, 5));
     const game = { ...start, state: applyEffects(start.state, [{ kind: 'well', field: 'attention', delta: 0.3 }]) };
-    expect(heardOver(game, 20)).toEqual(new Set([pack.readout!.attention[0]]));
+    onlyFrom(heardOver(game, 20), pack.readout!.attention[0]);
   });
 
   it('says what they believe instead, as soon as they believe it', () => {
@@ -609,7 +641,7 @@ describe('the village, said back', () => {
       ]),
     };
     // The dial is still up, and is outranked for as long as they have a story.
-    expect(heardOver(game, 20)).toEqual(new Set([pack.readout!.beliefs.tragedy]));
+    onlyFrom(heardOver(game, 20), pack.readout!.beliefs.tragedy);
   });
 
   it('a loud dial outranks the belief again', () => {
@@ -621,7 +653,7 @@ describe('the village, said back', () => {
         { kind: 'belief', belief: 'tragedy', delta: 0.5 },
       ]),
     };
-    expect(heardOver(game, 20)).toEqual(new Set([pack.readout!.dread[1]]));
+    onlyFrom(heardOver(game, 20), pack.readout!.dread[1]);
   });
 
   /**
@@ -787,16 +819,18 @@ describe('who is speaking', () => {
   it('a glimpse has no name yet', () => {
     // The silt gives something up on a press that lands. Whatever comes back
     // is a shape, so nothing in that turn may be captioned.
-    let game = newGame(pack, 11);
-    for (let i = 0; i < 20; i++) {
-      const { game: next, lines } = step(game, { kind: i % 3 === 2 ? 'haunt' : 'wait' });
-      game = next;
-      const glimpsed = lines.find((l) =>
-        Object.values(pack.below!).some((s) => s.glimpse !== undefined && s.glimpse === l.text),
-      );
-      if (glimpsed) {
-        expect(glimpsed.subject).toBeUndefined();
-        return;
+    for (let seed = 1; seed < 30; seed++) {
+      let game = newGame(pack, seed);
+      for (let i = 0; i < 20; i++) {
+        const { game: next, lines } = step(game, { kind: i % 3 === 2 ? 'haunt' : 'wait' });
+        game = next;
+        const glimpsed = lines.find((l) =>
+          Object.values(pack.below!).some((s) => s.glimpse !== undefined && s.glimpse === l.text),
+        );
+        if (glimpsed) {
+          expect(glimpsed.subject).toBeUndefined();
+          return;
+        }
       }
     }
     throw new Error('the silt never gave anything up');

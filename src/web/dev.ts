@@ -75,7 +75,6 @@ function mode(game: Game): object {
         revealed: p.revealed,
         found: p.found,
         seen: p.seen,
-        owed: p.owed,
         quiet: p.quiet,
         pending: p.pending.length,
       };

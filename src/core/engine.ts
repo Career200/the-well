@@ -42,10 +42,6 @@ export const HAS_PRESSED = "presence.has-pressed";
 /** Set by the first push refusal, so the line stating the rule is said once. */
 const HAS_BEEN_REFUSED = "presence.has-been-refused";
 
-/** A press that found nothing; the next one cannot. */
-const SILT_REFUSED = "silt.refused";
-const SILT_TAUGHT = "silt.taught";
-
 /**
  * Per-subject flags for the ambient five after beat zero. A place is closed
  * only against the tier it has already answered at, so a move in lucidity
@@ -172,9 +168,25 @@ export const TUNING = {
   lucidityFirstPress: 0.02,
   /** Base chance per idle turn that someone comes to the well. */
   sceneChance: 0.35,
-  /** Chance a press into the empty dark turns up a belonging. */
-  siltChance: 0.4
+  /** Chance a press into the empty dark turns up a third or fourth belonging. */
+  siltChance: 0.3,
+  /** The same, while fewer than two are in hand. */
+  siltPairChance: 0.7
 };
+
+/**
+ * What the silt will give up for one press, from what is already in hand. The
+ * first is owed outright; the second is loose; the rest is not. Read by both
+ * the idle game and beat zero, so a belonging costs the same either side of
+ * the crossing.
+ */
+export function siltChanceOf(game: Game): number {
+  const held = game.pack.objects.filter(
+    (o) => game.state.objects[o.id]?.found
+  ).length;
+  if (held === 0) return 1;
+  return held < 2 ? TUNING.siltPairChance : TUNING.siltChance;
+}
 
 /** Uses already spent, from the charge left. Indexes the per-use prose. */
 const usesSpent = (charge: number): number =>
@@ -726,27 +738,16 @@ function press(game: Game): {
   // Pressing at nobody spends the bar, and is the only thing that shakes
   // loose what beat zero left in the silt.
   const buried = next.pack.objects.find((o) => !next.state.objects[o.id]?.found);
-  const owed =
-    !next.state.flags[SILT_TAUGHT] || next.state.flags[SILT_REFUSED] === true;
-  if (buried && (owed || next.rng.next() < TUNING.siltChance)) {
+  if (buried && next.rng.next() < siltChanceOf(next)) {
     next = withState(
       next,
       applyEffects(next.state, [
-        { kind: "object", object: buried.id, field: "found", value: true },
-        { kind: "flag", flag: SILT_TAUGHT, value: true },
-        { kind: "flag", flag: SILT_REFUSED, value: false }
+        { kind: "object", object: buried.id, field: "found", value: true }
       ])
     );
     lines.push(fact(said.pushFound), fact(glimpseAt(next, buried)));
     return spent();
   }
-  if (buried)
-    next = withState(
-      next,
-      applyEffects(next.state, [
-        { kind: "flag", flag: SILT_REFUSED, value: true }
-      ])
-    );
   lines.push(fact(said.pushEmpty));
   return spent();
 }
@@ -766,7 +767,7 @@ function advanceBelowMode(
     presenceCharge: game.state.presence.charge,
     pressedThisTurn: input.pressedThisTurn,
     exhaustedThisTurn: input.exhaustedThisTurn,
-    siltRolled: game.rng.next() < TUNING.siltChance
+    siltRolled: game.rng.next() < siltChanceOf(game)
   });
 
   let next: Game = { ...game, mode: { kind: "below", phase } };
@@ -795,8 +796,7 @@ function advanceBelowMode(
       next = withState(
         next,
         applyEffects(next.state, [
-          { kind: "object", object: event.object, field: "found", value: true },
-          { kind: "flag", flag: SILT_TAUGHT, value: true }
+          { kind: "object", object: event.object, field: "found", value: true }
         ])
       );
     } else {

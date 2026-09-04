@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { couldStillFire, HAS_PRESSED, newGame, NOTHING_NEW, runStatus, step, TUNING } from '../src/core/engine.js';
+import { couldStillFire, HAS_PRESSED, newGame, NOTHING_NEW, runStatus, siltChanceOf, step, TUNING } from '../src/core/engine.js';
 import { resolveCoda, verdictOf } from '../src/core/coda.js';
 import type { Game, PlayerAction } from '../src/core/engine.js';
 import { pack } from '../src/content/index.js';
@@ -215,6 +215,51 @@ describe('belongings', () => {
       state: { ...fresh.state, objects: { ...fresh.state.objects, ring: { ...ring, found: true, discovered: true, charge: 0 } } },
     };
     expect(step(spent, { kind: 'attune', object: 'ring' }).lines[0]!.text).toMatch(/not coming back/);
+  });
+});
+
+describe('the silt', () => {
+  /** The first `n` belongings in pack order, in hand. */
+  const holding = (game: Game, n: number): Game => ({
+    ...game,
+    state: {
+      ...game.state,
+      objects: Object.fromEntries(
+        pack.objects.map((o, i) => [o.id, { ...game.state.objects[o.id]!, found: i < n }]),
+      ),
+      presence: { ...game.state.presence, charge: 1 },
+    },
+  });
+
+  const held = (game: Game): number => pack.objects.filter((o) => game.state.objects[o.id]?.found).length;
+
+  it('owes the first, is loose about the second, and rolls for the rest', () => {
+    const game = newGame(pack, 1);
+    expect(siltChanceOf(holding(game, 0))).toBe(1);
+    expect(siltChanceOf(holding(game, 1))).toBe(TUNING.siltPairChance);
+    expect(siltChanceOf(holding(game, 2))).toBe(TUNING.siltChance);
+    expect(siltChanceOf(holding(game, 3))).toBe(TUNING.siltChance);
+  });
+
+  it('gives the first up to any press, on every seed', () => {
+    for (let seed = 0; seed < 50; seed++) {
+      const after = step(holding(newGame(pack, seed), 0), { kind: 'haunt' }).game;
+      expect(held(after), `seed ${seed} kept the first belonging`).toBe(1);
+    }
+  });
+
+  it('refuses two presses running, on some seed: a refusal buys nothing', () => {
+    const twice = Array.from({ length: 200 }, (_, seed) => {
+      let game = holding(newGame(pack, seed), 2);
+      let refusals = 0;
+      for (let i = 0; i < 2 && game.mode.kind === 'idle'; i++) {
+        const before = held(game);
+        game = step(game, { kind: 'haunt' }).game;
+        if (held(game) === before) refusals++;
+      }
+      return refusals;
+    });
+    expect(Math.max(...twice)).toBe(2);
   });
 });
 

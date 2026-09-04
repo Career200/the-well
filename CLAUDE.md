@@ -20,7 +20,8 @@ The short version, because these three get assumed wrong every time:
 
 Engine invariants, enforced by `pnpm test`: `step()` is pure; content returns
 `Effect[]` and never mutates state; seed plus action log reproduces a run exactly,
-and only `core/rng.ts` may produce randomness.
+and only `core/rng.ts` may produce randomness. Determinism holds within a build:
+what a given seed produces is free to change between them.
 
 **Two registers, kept apart.** `src/content/prose/**` holds player-facing prose and
 is the only place it lives. Everything else — engine, UI, tests, code comments,

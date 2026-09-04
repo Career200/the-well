@@ -49,8 +49,6 @@ export interface BelowPhase {
   /** The two belongings reachable this run, drawn once at phase start. */
   found: [ObjectId, ObjectId];
   seen: Partial<Record<ObjectId, 'glimpse' | 'plain'>>;
-  /** The silt owes one. */
-  owed: boolean;
   wasLow: boolean;
   exhausted: boolean;
   /** Consecutive turns that narrated nothing. See `BELOW_TUNING.quietRun`. */
@@ -98,7 +96,6 @@ export function startBelow(pick: () => number, belongingIds: readonly ObjectId[]
     revealed: [],
     found: [pool[0]!, pool[1]!],
     seen: {},
-    owed: true,
     wasLow: false,
     exhausted: false,
     quiet: 0,
@@ -187,20 +184,17 @@ export function advanceBelow(phase: BelowPhase, input: BelowInput): { phase: Bel
     events.push({ kind: 'movement', to: 3 });
   }
 
-  // One owed on the second press, then the same debt the idle game runs.
+  // The pair reachable down here comes up from the second press on, at the
+  // chance the engine rolled.
   const target = input.pressedThisTurn && next.pressCount >= 2 ? next.found.find((id) => !next.seen[id]) : undefined;
-  if (target) {
-    if (next.owed || input.siltRolled) {
-      // The silt resolves on the first thing it gives up, not on the clock.
-      if (!next.revealed.includes('silt')) {
-        next = { ...next, revealed: [...next.revealed, 'silt'] };
-        events.push({ kind: 'ambient', subject: 'silt', caused: true });
-      }
-      next = { ...next, owed: false, seen: { ...next.seen, [target]: 'glimpse' } };
-      events.push({ kind: 'glimpse', object: target });
-    } else {
-      next = { ...next, owed: true };
+  if (target && input.siltRolled) {
+    // The silt resolves on the first thing it gives up, not on the clock.
+    if (!next.revealed.includes('silt')) {
+      next = { ...next, revealed: [...next.revealed, 'silt'] };
+      events.push({ kind: 'ambient', subject: 'silt', caused: true });
     }
+    next = { ...next, seen: { ...next.seen, [target]: 'glimpse' } };
+    events.push({ kind: 'glimpse', object: target });
   }
 
   // The light does not cross for a presence that never acted; `doorOut`

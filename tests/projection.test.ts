@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   camSpace,
+  crossing,
   extent,
   eyeAt,
   lens,
@@ -149,5 +150,70 @@ describe('extent', () => {
     ];
     const only = (p: Point) => (p.x === 0 ? { x: 3, y: 7 } : null);
     expect(extent(pts, only)).toEqual({ left: 3, right: 3, top: 7, bottom: 7 });
+  });
+});
+
+describe('crossing', () => {
+  const frame = { w: 390, h: 844 };
+  const project = projector(REST_POSE, WELL, frame);
+
+  it('answers with the edge on screen, not with the ring behind the camera', () => {
+    const surface = ring(WELL.water, WELL, 128);
+    const cut = crossing(surface, project, frame)!;
+    const box = extent(surface, project)!;
+    // The ring passes behind the camera and the lens throws that part of it
+    // far off to the sides, so the box reaches above what is drawn.
+    expect(box.left).toBeLessThan(0);
+    expect(box.right).toBeGreaterThan(frame.w);
+    expect(box.top).toBeLessThan(cut.top);
+  });
+
+  it('is null when none of it lands in the frame', () => {
+    // A ring below the floor, which the frame does not reach at this pose.
+    expect(crossing(ring(-40, WELL, 64), project, frame)).toBeNull();
+  });
+
+  it('takes the margin as slack on the frame', () => {
+    const pts: Point[] = [{ x: 0, y: 0, z: 0 }];
+    const just: Project = () => ({ x: frame.w + 4, y: 10 });
+    expect(crossing(pts, just, frame)).toBeNull();
+    expect(crossing(pts, just, frame, 8)).toEqual({ top: 10, bottom: 10 });
+  });
+});
+
+describe('a pitch up off the rest pose', () => {
+  const frame = { w: 390, h: 844 };
+  const cut = (pitch: number, y: number) => {
+    const project = projector({ ...REST_POSE, pitch }, WELL, frame);
+    return crossing(ring(y, WELL, 128), project, frame);
+  };
+  /** What `attend` adds, and then some, in radians. */
+  const TILT = (12 * Math.PI) / 180;
+
+  it('carries the picture down the frame, a step at a time', () => {
+    let rim = -Infinity;
+    let water = -Infinity;
+    for (let i = 0; i <= 12; i++) {
+      const pitch = REST_POSE.pitch + (TILT * i) / 12;
+      const next = { rim: cut(pitch, WELL.height)!.bottom, water: cut(pitch, WELL.water)!.top };
+      // Monotonic: a band cut on these does not double back mid-move.
+      expect(next.rim).toBeGreaterThan(rim);
+      expect(next.water).toBeGreaterThan(water);
+      rim = next.rim;
+      water = next.water;
+    }
+  });
+
+  it('keeps rim, water and silt stacked through the move', () => {
+    for (let i = 0; i <= 12; i++) {
+      const pitch = REST_POSE.pitch + (TILT * i) / 12;
+      const rim = cut(pitch, WELL.height)!;
+      const water = cut(pitch, WELL.water)!;
+      const silt = cut(pitch, 0);
+      expect(rim.bottom).toBeLessThan(water.top);
+      // The floor leaves the frame before the water does, and a place the
+      // frame no longer holds has no band rather than a wrong one.
+      if (silt) expect(water.top).toBeLessThan(silt.top);
+    }
   });
 });

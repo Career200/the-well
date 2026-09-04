@@ -179,3 +179,37 @@ export function extent(pts: readonly Point[], project: Project): Extent | null {
   }
   return top === Infinity ? null : { left, right, top, bottom };
 }
+
+/** Where a ring meets the frame, in px. What a band is cut on. */
+export interface Crossing {
+  top: number;
+  bottom: number;
+}
+
+/**
+ * The vertical span of a projected polyline, over the points that land in the
+ * frame. Null when none of them do.
+ *
+ * A ring of the shaft passes behind the camera, and the lens throws that part
+ * of it hundreds of px outside the frame. `extent` over the whole ring answers
+ * with those points rather than with the edge that is on screen, so a band cut
+ * on it moves against the picture as the pose changes.
+ */
+export function crossing(
+  pts: readonly Point[],
+  project: Project,
+  frame: Frame,
+  margin = 0
+): Crossing | null {
+  let top = Infinity;
+  let bottom = -Infinity;
+  for (const p of pts) {
+    const s = project(p);
+    if (!s) continue;
+    if (s.x < -margin || s.x > frame.w + margin) continue;
+    if (s.y < -margin || s.y > frame.h + margin) continue;
+    if (s.y < top) top = s.y;
+    if (s.y > bottom) bottom = s.y;
+  }
+  return top === Infinity ? null : { top, bottom };
+}

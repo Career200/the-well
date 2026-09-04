@@ -157,9 +157,13 @@ read.
 ## Costs to hold to
 
 - During a camera move every dot moves, so the selective-update short circuit
-  does not fire; the field is ~1–1.5k rects on a phone. The picture's clock runs
-  at `TICK_MS` 190 (~5fps) and reads as stepped by design; camera moves want
-  10–15fps. The gap between "stepped" and "janky" is the thing to tune.
+  does not fire. The floor is 913 rects at full lucidity — every mote of the disc
+  holds an element whether or not the pose puts it in frame, a set culled to the
+  frame being one that cannot move without being rebuilt. One reprojection at
+  full lucidity is ~5.2k projected points and 2.5ms of scripting on a desktop
+  CPU, against a 70ms camera tick. The water's clock runs at `TICK_MS` 190
+  (~5fps) and reads as stepped by design; the gap between "stepped" and "janky"
+  is the thing to tune.
 - Full lucidity is the expensive frame, since subdivision is both the detail dial
   and the cost dial.
 
@@ -205,12 +209,24 @@ purpose, for as long as it lasts.
 ## Standing
 
 `web/projection.ts` holds the lens and the well as geometry, with no DOM and its
-own tests. `web/shaft-fisheye.ts` draws rim, waterline, silt edge, joints cut at
-the surface, courses, and the floor grain, at one held pose. `web/chrome.ts`
-holds what both pictures share — corners, tap targets, reveal, `veil` —
-`web/sky.ts` the light through the opening, and `web/clock.ts` the agitation.
-The motion selector in `shaft-debug.ts` swaps the two views; the camera is what
-it opens on.
+own tests. `web/camera.ts` holds the pose the picture stands in and the move
+between poses. `web/shaft-fisheye.ts` draws rim, waterline, silt edge, joints cut
+at the surface, courses, and the floor grain, in two halves: `build` decides
+which elements exist and what world points each one carries and runs on a step of
+lucidity, and `reproject` walks those points through the current pose and runs on
+every frame of a move. `web/chrome.ts` holds what both pictures share — corners,
+tap targets, reveal, `veil` — `web/sky.ts` the light through the opening, and
+`web/clock.ts` the agitation. The motion selector in `shaft-debug.ts` swaps the
+two views; the camera is what it opens on.
+
+`rest` and `attend` are the poses that exist. `attend` adds 10° of pitch while
+`occupied`, eased with a smoothstep over 780ms on a 70ms clock; `tilt` and
+`attend` in the debug panel move the two dials and land at once, a dial not
+being a beat. Pitch carries the whole picture down the frame: at `attend` on
+390×844 the rim's lower edge is at 213px against 149 at rest, the waterline at
+701 against 643, and the silt edge at 829 of 844, which closes the floor's band
+to 15px. Past about 12° the floor leaves the frame altogether. The silt's band is
+what caps the tilt, well before the geometry does.
 
 The opening is a filled region: one projected rim polyline serves as the lip,
 the coin and the clip, with `sky-glow` placed in px off its own box and the
@@ -219,27 +235,31 @@ outline, so the sky draws last and covers nothing. Occlusion takes the coin's
 opacity and the picture's brightness. The rim's box is 1.18:1 at every viewport
 and the pitch crops about 1% of height off its top edge.
 
-Provisional: `bands` is the screen extremes of the three rings, enough to stack
-the tap targets and nothing more. The halo pooling under the lip is not drawn —
-it is light on the upper wall and may want to be real rather than a screen-space
-ellipse.
+`bands` is the three rings' screen crossings — each ring's vertical span over the
+points the frame holds. A ring passes behind the camera and the lens throws that
+part of it hundreds of px outside the frame, so a box taken over the whole ring
+answers with those points rather than with the edge that is on screen, and moves
+against the picture as the pose changes. The rim's own box is still what the
+light is placed off, that being a shape lit rather than a band cut. Provisional
+past that: enough to stack the tap targets and nothing more. A ring the frame no
+longer holds gives its place no band. `onLayout` fires where a move comes to
+rest and not on the frames between, the reading band not being relayable fifteen
+times a second; `bands()` answers live for a caller that wants it sooner.
+
+The halo pooling under the lip is not drawn — it is light on the upper wall and
+may want to be real rather than a screen-space ellipse.
 
 ---
 
 ## Order
 
-**B. Pitch, on scene start.** The camera becomes state the renderer holds rather
-than a constant it reads. Two things follow. `layout` splits into reprojecting
-the elements that exist and rebuilding the set, because an eased move cannot
-recreate every path and speck per frame. And `bands` starts moving per pose,
-which is where the tap regions and the reading band have to line up for real.
-
-**C. Field of view, with early cancel.** The same dial machinery as B, so the
-new work is an interruptible ease: a current pose, a target, and retargeting
-mid-move when the coat cuts a scene short. Pose timing hangs off the delay array
-`narrate()` returns, the way `hold` already times the figure. Narrowing the
-field straightens the bowing, so a push-in relaxes the well as well as closing
-on it.
+**C. Field of view, with early cancel.** The dial carries a whole `Camera` and
+retargets from wherever a move has reached, so a pose that narrows the field
+needs nothing new there. The work is `close` itself — the field narrowing with
+beats elapsed and opening back out — and its timing, which hangs off the delay
+array `narrate()` returns the way `hold` already times the figure, and which the
+coat can cut short mid-move. Narrowing the field straightens the bowing, so a
+push-in relaxes the well as well as closing on it.
 
 **D. The figure and its states.** `occupied`, `leaving`, `recoil`, and
 `resonating` with `reach`. Every anchor the flat picture takes from the rim's

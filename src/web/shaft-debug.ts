@@ -8,6 +8,8 @@
  * a phone, so anything needed while watching stays on the bar.
  */
 import './shaft-debug.css';
+import { DIALS } from './camera.js';
+import type { Dials } from './camera.js';
 import { REST_POSE, WELL } from './projection.js';
 import { PLACES } from './shaft.js';
 import type { PlaceId, Shaft, ShaftFactory, ShaftState } from './shaft.js';
@@ -62,7 +64,13 @@ const resolvedNow = new Set<PlaceId>(PLACES);
  * flat diagram, on is the camera.
  */
 type Motion = 'off' | 'on';
-const RENDERERS: Record<Motion, ShaftFactory> = { off: makeShaft, on: makeFisheyeShaft };
+/** The camera's own dials, so the panel can find the numbers by eye. */
+const dials: Dials = { rest: { ...DIALS.rest }, attend: DIALS.attend };
+
+const RENDERERS: Record<Motion, ShaftFactory> = {
+  off: makeShaft,
+  on: (host, opts) => makeFisheyeShaft(host, opts, () => dials),
+};
 
 // The camera is what the harness is for; the flat picture is the comparison.
 let motion: Motion = 'on';
@@ -263,13 +271,43 @@ scalar('charge', 'charge');
 
 // The projection's own dials, in the units the dimensions table in
 // `docs/SHAFT_UI_PLAN.md` uses, opening on what the renderer currently holds.
-// Inert: the camera is one held pose and the water one held level, and taking
-// either from here is its own step.
-const dials = group('projection');
+// A dial is not a beat, so moving one lands on the picture at once; only a
+// scene start or end plays the move between them.
+const panel = group('projection');
 const deg = (rad: number): number => (rad * 180) / Math.PI;
-slider(dials, 'tilt', { min: 0, max: 60, step: 1, value: Math.round(deg(REST_POSE.pitch)), decimals: 0, unit: '°' });
-slider(dials, 'fov', { min: 70, max: 175, step: 1, value: Math.round(deg(REST_POSE.fov)), decimals: 0, unit: '°' });
-slider(dials, 'waterline', {
+const rad = (turn: number): number => (turn * Math.PI) / 180;
+
+slider(panel, 'tilt', {
+  min: 0,
+  max: 60,
+  step: 1,
+  value: Math.round(deg(dials.rest.pitch)),
+  decimals: 0,
+  unit: '°',
+  onInput: (n) => {
+    dials.rest.pitch = rad(n);
+    sync();
+  },
+});
+// How far the camera comes up while somebody is at the rim. Past about 12° the
+// silt leaves the frame on a phone and its band closes; the readout under the
+// picture says what the bands are doing.
+slider(panel, 'attend', {
+  min: 0,
+  max: 25,
+  step: 1,
+  value: Math.round(deg(dials.attend)),
+  decimals: 0,
+  unit: '°',
+  onInput: (n) => {
+    dials.attend = rad(n);
+    sync();
+  },
+});
+// Inert: the field of view is one held angle and the water one held level, and
+// taking either from here is its own step.
+slider(panel, 'fov', { min: 70, max: 175, step: 1, value: Math.round(deg(REST_POSE.fov)), decimals: 0, unit: '°' });
+slider(panel, 'waterline', {
   min: 0,
   max: 30,
   step: 0.5,

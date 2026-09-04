@@ -172,13 +172,6 @@ describe('crossing', () => {
     // A ring below the floor, which the frame does not reach at this pose.
     expect(crossing(ring(-40, WELL, 64), project, frame)).toBeNull();
   });
-
-  it('takes the margin as slack on the frame', () => {
-    const pts: Point[] = [{ x: 0, y: 0, z: 0 }];
-    const just: Project = () => ({ x: frame.w + 4, y: 10 });
-    expect(crossing(pts, just, frame)).toBeNull();
-    expect(crossing(pts, just, frame, 8)).toEqual({ top: 10, bottom: 10 });
-  });
 });
 
 describe('a pitch up off the rest pose', () => {

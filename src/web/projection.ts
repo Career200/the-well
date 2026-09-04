@@ -195,19 +195,13 @@ export interface Crossing {
  * with those points rather than with the edge that is on screen, so a band cut
  * on it moves against the picture as the pose changes.
  */
-export function crossing(
-  pts: readonly Point[],
-  project: Project,
-  frame: Frame,
-  margin = 0
-): Crossing | null {
+export function crossing(pts: readonly Point[], project: Project, frame: Frame): Crossing | null {
   let top = Infinity;
   let bottom = -Infinity;
   for (const p of pts) {
     const s = project(p);
     if (!s) continue;
-    if (s.x < -margin || s.x > frame.w + margin) continue;
-    if (s.y < -margin || s.y > frame.h + margin) continue;
+    if (s.x < 0 || s.x > frame.w || s.y < 0 || s.y > frame.h) continue;
     if (s.y < top) top = s.y;
     if (s.y > bottom) bottom = s.y;
   }

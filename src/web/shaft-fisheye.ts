@@ -413,7 +413,7 @@ export function makeFisheyeShaft(
         // A beat asked for a different pose. This is the only thing that eases.
         posed = name;
         camera.aim(target);
-      } else if (!camera.moving) {
+      } else {
         // The pose is unchanged, so any difference is a dial moving under it.
         camera.jump(target);
       }

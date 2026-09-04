@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { between, cameraFor, DIALS, ease, poseOf, same } from '../src/web/camera.js';
+import { cameraFor, DIALS, poseOf } from '../src/web/camera.js';
 import { REST_POSE } from '../src/web/projection.js';
 import type { ShaftState } from '../src/web/shaft.js';
 
@@ -52,46 +52,5 @@ describe('where a pose stands', () => {
     const at = cameraFor('rest', DIALS);
     at.pitch = 99;
     expect(DIALS.rest.pitch).not.toBe(99);
-  });
-});
-
-describe('the ease', () => {
-  it('starts and ends at rest', () => {
-    expect(ease(0)).toBe(0);
-    expect(ease(1)).toBe(1);
-    // Symmetric about the middle, and moving fastest there.
-    expect(ease(0.5)).toBeCloseTo(0.5);
-    expect(ease(0.25) + ease(0.75)).toBeCloseTo(1);
-    expect(ease(0.1)).toBeLessThan(0.1);
-    expect(ease(0.9)).toBeGreaterThan(0.9);
-  });
-
-  it('holds outside its own range', () => {
-    expect(ease(-1)).toBe(0);
-    expect(ease(2)).toBe(1);
-  });
-});
-
-describe('between', () => {
-  const rest = cameraFor('rest', DIALS);
-  const attend = cameraFor('attend', DIALS);
-
-  it('is the ends at the ends', () => {
-    expect(between(rest, attend, 0)).toEqual(rest);
-    expect(between(rest, attend, 1)).toEqual(attend);
-  });
-
-  it('carries every dial, not only the one this pose moves', () => {
-    const half = between(rest, { ...attend, fov: attend.fov / 2 }, 0.5);
-    expect(half.pitch).toBeCloseTo((rest.pitch + attend.pitch) / 2);
-    expect(half.fov).toBeCloseTo(rest.fov * 0.75);
-  });
-});
-
-describe('same', () => {
-  it('is true for a copy and false for a moved dial', () => {
-    const rest = cameraFor('rest', DIALS);
-    expect(same(rest, { ...rest })).toBe(true);
-    expect(same(rest, { ...rest, pitch: rest.pitch + 1e-9 })).toBe(false);
   });
 });

@@ -589,7 +589,11 @@ function tick(game: Game, gathering: boolean): { game: Game; lines: NarrationLin
       return { game: next, lines: [scene('You push. The water goes wrong for a moment; the sound of it climbs the wall.')] };
     }
     if (next.mode.kind === 'below') {
-      return { game: next, lines: [fact('The water answers. It is the only thing down here that does.')] };
+      // push must reveal water visuals if it's not there already
+      return {
+        game: next,
+        lines: [{ kind: 'fact', text: 'The water answers. It is the only thing down here that does.', subjectId: 'water' }],
+      };
     }
 
     // Pressing at nobody wastes the bar — except it is the only thing that

@@ -51,6 +51,11 @@ export interface NarrationLine {
    * `subject` is. A client that draws the nine has to match on something the
    * writing cannot drift away from — `subject` is authored text and is free
    * to stop looking like an id at any point.
+   *
+   * It is also set, alone and without a caption, on a line in the presence's
+   * own voice that nonetheless names a place outright. That line is not the
+   * place speaking, so it stays headless, but a client drawing the place must
+   * not still be holding it in the dark once a sentence has said it is there.
    */
   subjectId?: string;
 }

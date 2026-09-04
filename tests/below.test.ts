@@ -169,6 +169,23 @@ describe('beat zero', () => {
     }
   });
 
+  it('a push names the water, so the water is never answered by nothing on screen', () => {
+    // The client brings a place out of the dark as the line naming it surfaces.
+    // The water's own line waits on the ambient clock and on the line budget
+    // behind it, but a push answers on the turn it is made — so that line
+    // carries the id itself, and whichever comes first puts the water up.
+    // Headless: this is the presence talking about the water, not the water.
+    for (const seed of [1, 3, 8, 42]) {
+      const game = newGame(pack, seed, { below: true });
+      const pushed = step(game, { kind: 'haunt' });
+      const answer = pushed.lines.find((line) => line.subjectId === 'water');
+      expect(answer, `seed ${seed} pushed and left the water unnamed`).toBeDefined();
+      expect(answer!.subject, `seed ${seed} captioned the presence's own voice`).toBeUndefined();
+      // and the phase's own clock is untouched by it
+      expect(pushed.game.mode.kind === 'below' && pushed.game.mode.phase.revealed).not.toContain('water');
+    }
+  });
+
   it('never says the same thing twice', () => {
     // Short and linear enough that a repeated sentence reads as the machine
     // showing through. Repetition is the run's tool, not this one's.

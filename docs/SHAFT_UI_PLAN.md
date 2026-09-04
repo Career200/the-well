@@ -67,22 +67,27 @@ Consequences: `bands` is state-dependent as well as pose-dependent, and a
 standing rise needs a cap or it takes the reading band permanently rather than
 temporarily.
 
-**How a rise draws is two candidates, and both get built before either is
-kept.** *Flooded grain:* the water is one substance everywhere, so the rise
-carries the halftone up the shaft. It costs grain generated above the resting
-surface, and at the top of a rise it is a field of specks across the whole
-opening — which is the doubt: cost, and whether that reads as water or as
-noise. *A rising wash:* the risen band is one semi-transparent fill under the
-waterline, blue deepening toward dark as the level climbs, so depth is carried
-by colour rather than by more specks. It is cheaper, it needs no headroom, and
-past the eye it is already the under-water state at full extent. The doubt
-there is whether it reads as water rather than as a filter laid over the
-picture.
+**How a rise draws is two candidates, both built, and the choice is open.**
+*A rising wash:* one semi-transparent fill under the waterline, blue deepening
+toward dark as the level climbs, so depth is carried by colour. *Flooded grain:*
+the halftone filling the same region, denser near the surface and thinning with
+depth. The `Rise` setting switches them so the pair can be put against the same
+push. At full lucidity on 390×844: the wash is 5.1ms a reprojection over 913
+rects, the grain 9.4ms over 4189. The wash is cheaper by the margin it looked
+like it would be.
 
-Either way the resting surface is unchanged: the grain, the lucidity steps and
-the wave all stay as they are. What is in question is only what the rise adds
-on top of them, and it is a question the built thing answers rather than the
-plan.
+Either way the resting surface is unchanged. The wash is at zero opacity until
+something raises the level, so a well nobody has pushed is the picture it was
+before there was a wash at all.
+
+**The grain has to be screen-space; a scatter on the surface will not do it.**
+The camera stands 0.455 above the water, so as a push brings the level to the
+eye the plane collapses toward a horizon rather than opening out: the count in
+frame barely moves, and every mote near the camera is divided by a distance
+going to zero and blows up. What floods a frame is a field over the region the
+water covers on it. That settles the screen-space against world-space question
+for the water, and leaves it open only for the floor, which the camera is
+always well above.
 
 ### Lucidity
 
@@ -232,7 +237,8 @@ purpose, for as long as it lasts.
 
 `web/projection.ts` holds the lens and the well as geometry, with no DOM and its
 own tests. `web/camera.ts` holds the pose the picture stands in and the move
-between poses, and `web/figure.ts` the body at the rim. `web/shaft-fisheye.ts` draws rim, waterline, silt edge, joints cut
+between poses, `web/figure.ts` the body at the rim, and `web/water.ts` the level
+and what a rise looks like. `web/shaft-fisheye.ts` draws rim, waterline, silt edge, joints cut
 at the surface, courses, and the floor grain, in two halves: `build` decides
 which elements exist and what world points each one carries and runs on a step of
 lucidity, and `reproject` walks those points through the current pose and runs on
@@ -272,6 +278,17 @@ sits on the near edge of the lit core rather than on the lip itself: the coin's
 falloff is nearly out by the stone, and a silhouette needs light behind it to be
 one.
 
+The level is worked out per frame from the agitation rather than carried between
+frames, so `WELL` stays the resting dimensions and a risen well is a copy. A
+push displaces 0.18 well units at full agitation, times up to five for the turns
+behind it, capped at 0.8; the eye is 0.455 above the resting surface, so a late
+push on a spent presence crosses it and the picture is under water for a beat.
+The wave displaces the surface ring's own `y` before it is projected. Only the
+surface and the joints' cut move with the level: courses stand at fixed heights
+and change hands between `dry` and `drowned` when the water reaches them, which
+is a check and not a rebuild. The water draws over the silt, the floor being
+under the surface at every level.
+
 On 390×844 the pair reads: rest puts the rim's lower edge at 149px and the
 waterline at 643; `attend` at 213 and 701, which closes the floor's band to
 15px; a full `close` at 192 and 732, with the floor off the frame from the
@@ -307,13 +324,8 @@ may want to be real rather than a screen-space ellipse.
 
 ## Order
 
-**E. Water, and the push.** The grain in both modes, screen-space and
-world-space, switchable and then decided. Waves displace the ring's world `y`
-before projecting rather than bending a screen-space path. Then the level: the
-rise on a push, the modifier growing with turns, the cap, and the crossing past
-the eye. `Well` stops being a module constant and becomes a per-frame value.
-The rise draws both ways — flooded grain and a rising wash — behind a switch
-like the one §Motion uses, and the pair is looked at before either is kept.
+**Which rise is kept.** Both are built and switchable; one of them goes. What
+the loser leaves behind is the switch and one branch of `paintWater`.
 
 **Unplaced.** The reading-band probe, which is independent of all of the above
 and is still the one result that can invalidate the projection. What else the

@@ -21,12 +21,14 @@ import type { Dials, Pose } from './camera.js';
 import { makeChrome, veil } from './chrome.js';
 import { makeFigure } from './figure.js';
 import { makeClock } from './clock.js';
-import { COURSES, JOINT_STEPS, RING_STEPS, SILT_RINGS, stepOf, WALLS } from './grain.js';
-import { crossing, extent, eyeAt, joint, polyline, projector, ring, WELL } from './projection.js';
-import type { Camera, Frame, Point, Project } from './projection.js';
+import { COURSES, DOT_SPACING, JOINT_STEPS, RING_STEPS, SILT_RINGS, stepOf, WALLS } from './grain.js';
+import { crossing, extent, eyeAt, polyline, projector, ring, WELL } from './projection.js';
+import type { Camera, Frame, Point, Project, Well } from './projection.js';
 import type { Bands, PlaceId, Shaft, ShaftOptions, ShaftState } from './shaft.js';
 import { OCCLUDED, skyGlow, skyLight } from './sky.js';
 import { attrs, clamp01, hash, lerp, svgEl } from './svg.js';
+import { riseOf, submerged, surfaceAt, washOf, wellAt } from './water.js';
+import type { Rise } from './water.js';
 
 /**
  * Joints around the full circle, from the far-wall count. The flat picture
@@ -53,10 +55,37 @@ const ORBIT = 0.72;
 const HEAVE = 0.14;
 const HEAVE_PER_UNIT = 1.7;
 
-/** A polyline that exists as an element and is reprojected in place. */
+/**
+ * A polyline that exists as an element and is reprojected in place. A course of
+ * stone stands at a fixed height, so its points are settled at build; a joint
+ * runs between the floor, the surface and the rim, and the surface moves, so it
+ * carries its bearing and is walked per frame.
+ */
 interface Line {
   el: SVGPathElement;
-  pts: readonly Point[];
+  /** Fixed points, for anything the level does not move. */
+  pts?: readonly Point[];
+  /** Bearing and which side of the surface, for a joint. */
+  at?: { bearing: number; under: boolean };
+  /** Height in the well, for a course. Decides whether the water has it. */
+  y: number;
+}
+
+/**
+ * One dot of the flooded grain, on a fixed screen grid. The water is a plane
+ * the camera stands just above, so a scatter across it in world space runs to
+ * nothing: as the level climbs to the eye the plane collapses toward a horizon
+ * and every mote near the camera divides by a distance going to zero. What
+ * floods a frame is a field over the region the water covers on it.
+ */
+interface Mote {
+  el: SVGRectElement;
+  x: number;
+  y: number;
+  /** Its own noise, which sets how much of a cell it fills. */
+  n: number;
+  /** Last written size. */
+  size: number;
 }
 
 /** One mote of floor, stuck to the plane at `y = 0`. */
@@ -78,11 +107,20 @@ interface Speck {
   size: number;
 }
 
+/** What the harness sets: the camera's dials, and how a rise draws. */
+export interface View {
+  dials: Dials;
+  rise: Rise;
+}
+
+const VIEW: View = { dials: DIALS, rise: 'wash' };
+
 export function makeFisheyeShaft(
   host: HTMLElement,
   opts: ShaftOptions = {},
-  dials: () => Dials = () => DIALS
+  view: () => View = () => VIEW
 ): Shaft {
+  const dials = (): Dials => view().dials;
   const svg = svgEl('svg');
   svg.setAttribute('preserveAspectRatio', 'none'); // viewBox tracks pixel size
   svg.classList.add('scene');
@@ -100,6 +138,10 @@ export function makeFisheyeShaft(
   defs.append(glow, skyLight(), hole, ...figure.defs);
 
   // ---- the walls: one set of stones, cut at the waterline ----------------
+  // One set of stones in two groups: the opacity is the group's, so strokes
+  // that cross do not brighten where they meet. A joint knows which half of
+  // itself it is and never moves; a course changes hands when the water
+  // reaches it.
   const wallsG = svgEl('g');
   wallsG.classList.add('walls', 'place-shape');
   const dry = svgEl('g');
@@ -111,10 +153,16 @@ export function makeFisheyeShaft(
   // ---- the water: the surface, seen from just above it -------------------
   const waterG = svgEl('g');
   waterG.classList.add('water', 'place-shape');
+  // The wash: everything under the surface, as one fill. Its top edge is the
+  // waterline itself, so the two never disagree about where the water is.
+  const wash = svgEl('path');
+  wash.classList.add('wash');
+  const waterGrain = svgEl('g');
+  waterGrain.classList.add('grain');
   const waterline = svgEl('path');
   waterline.classList.add('waterline');
   waterline.setAttribute('fill', 'none');
-  waterG.append(waterline);
+  waterG.append(wash, waterGrain, waterline);
 
   // ---- the silt ----------------------------------------------------------
   const siltG = svgEl('g');
@@ -151,7 +199,10 @@ export function makeFisheyeShaft(
   skyG.classList.add('sky', 'place-shape');
   skyG.append(through, rim);
 
-  svg.append(defs, wallsG, waterG, siltG, skyG);
+  // Back to front. The floor is under the surface at every level, so the water
+  // draws over it: with a fill under the waterline, an order that put the silt
+  // last would leave the floor sitting on top of the water covering it.
+  svg.append(defs, wallsG, siltG, waterG, skyG);
 
   const shapes: Record<PlaceId, SVGGElement> = { sky: skyG, walls: wallsG, water: waterG, silt: siltG };
   const chrome = makeChrome(shapes, opts.onPlace);
@@ -164,22 +215,32 @@ export function makeFisheyeShaft(
   // ---- what `build` decides and `reproject` reads -------------------------
   /** Which grain the picture is currently built at. A step rebuilds it. */
   let grain = -1;
-  /** The three rings the bands are cut on, and the sky's own box. */
+  /** The rings the bands are cut on. The surface is walked per frame. */
   let rimRing: Point[] = [];
-  let surfaceRing: Point[] = [];
   let floorRing: Point[] = [];
-  /** Joints and courses, each already parented into `dry` or `drowned`. */
+  /** Joints and courses. */
   let lines: Line[] = [];
   let specks: Speck[] = [];
+  let motes: Mote[] = [];
   /** A floor cell, well units. Sets how many px one speck is worth. */
   let cell = 0;
+  /** Points per polyline at the current grain. */
+  let ringSteps = 64;
+  let jointSteps = 24;
+
+  /** The well this frame has. Derived from the agitation, never written to. */
+  let well: Well = WELL;
+  /** Which of the two rise treatments is drawn. Settled at build. */
+  let rise: Rise = view().rise;
 
   /** What the state last asked for. A change is what eases. */
   let posed: Pose = { attend: false, beats: 0 };
   /** The turn a scene started on, so a beat inside one can be counted off it. */
   let sceneAt = 0;
 
-  const clock = makeClock({ draw: () => draw(), charge: () => last?.charge ?? 1 });
+  // The level and the wave both ride the agitation, so a tick moves geometry
+  // and not only the size of what is already placed.
+  const clock = makeClock({ draw: () => reproject(), charge: () => last?.charge ?? 1 });
   const camera = makeCamera({
     start: cameraFor(posed, dials()),
     draw: () => reproject(),
@@ -189,12 +250,73 @@ export function makeFisheyeShaft(
     settled: () => opts.onLayout?.(bands)
   });
 
-  /** One path element carrying a polyline, appended to `into`. */
-  const strokeLine = (into: SVGGElement, pts: readonly Point[]): void => {
+  /** Which side of the surface a line is on, at the well this frame has. */
+  const sideOf = (line: Omit<Line, 'el'>, at: Well): SVGGElement =>
+    (line.at ? line.at.under : line.y < at.water) ? drowned : dry;
+
+  /** One path element in the wall, carrying whatever walks its points. */
+  const strokeLine = (line: Omit<Line, 'el'>): void => {
     const el = svgEl('path');
-    into.append(el);
-    lines.push({ el, pts });
+    el.setAttribute('fill', 'none');
+    sideOf(line, WELL).append(el);
+    lines.push({ ...line, el });
   };
+
+  /** The points of one line, at the well this frame has. */
+  const pointsOf = (line: Line, at: Well): readonly Point[] => {
+    if (line.pts) return line.pts;
+    const { bearing, under } = line.at!;
+    const x = Math.cos(bearing) * at.radius;
+    const z = Math.sin(bearing) * at.radius;
+    const y0 = under ? 0 : at.water;
+    const y1 = under ? at.water : at.height;
+    const pts: Point[] = [];
+    for (let i = 0; i <= jointSteps; i++) pts.push({ x, y: y0 + (i / jointSteps) * (y1 - y0), z });
+    return pts;
+  };
+
+  /**
+   * A polar scatter over the disc, even by area: the count along each ring
+   * follows from its circumference, so the ring count is the only dial. Off the
+   * grid by its own noise, or it reads as a grid.
+   */
+  function* scatter(rings: number): Generator<{ r: number; bearing: number; n: number; m: number }> {
+    const step = WELL.radius / rings;
+    for (let i = 0; i < rings; i++) {
+      const ring = (i + 0.5) * step;
+      const arcs = Math.max(8, Math.round((2 * Math.PI * ring) / step));
+      for (let j = 0; j < arcs; j++) {
+        const n = hash(ring * 71.3, j * 13.7);
+        const m = hash(j * 29.1, ring * 47.9);
+        yield {
+          r: ring + (n - 0.5) * step * 0.7,
+          bearing: ((j + (m - 0.5) * 0.7) / arcs) * Math.PI * 2,
+          n,
+          m
+        };
+      }
+    }
+  }
+
+  /**
+   * The flooded grain, as a halftone over the whole frame. Which of it the
+   * water has is decided per frame against the surface, so a rise floods more
+   * of the grid without any of it being generated for the occasion.
+   */
+  function buildWater(): void {
+    waterGrain.replaceChildren();
+    motes = [];
+    if (rise !== 'grain') return;
+    const spacing = DOT_SPACING[grain]!;
+    for (let x = spacing / 2; x < frame.w; x += spacing) {
+      for (let y = spacing / 2; y < frame.h; y += spacing) {
+        const el = svgEl('rect');
+        attrs(el, { x: 0, y: 0, width: 0, height: 0, fill: 'currentColor' });
+        waterGrain.append(el);
+        motes.push({ el, x, y, n: hash(x, y), size: 0 });
+      }
+    }
+  }
 
   /**
    * The floor, as motes on a polar grid. Every mote of the disc gets an
@@ -206,43 +328,34 @@ export function makeFisheyeShaft(
     specks = [];
     cell = WELL.radius / rings;
 
-    for (let i = 0; i < rings; i++) {
-      const r = (i + 0.5) * cell;
-      const arcs = Math.max(8, Math.round((2 * Math.PI * r) / cell));
-      for (let j = 0; j < arcs; j++) {
-        const n = hash(r * 71.3, j * 13.7);
-        const m = hash(j * 29.1, r * 47.9);
-        // Off the grid, or the floor reads as a grid.
-        const t = ((j + (m - 0.5) * 0.7) / arcs) * Math.PI * 2;
-        const rr = r + (n - 0.5) * cell * 0.7;
-        const el = svgEl('rect');
-        attrs(el, { x: 0, y: 0, width: 0, height: 0, fill: 'currentColor' });
-        siltGrain.append(el);
-        specks.push({
-          el,
-          at: { x: Math.cos(t) * rr, y: 0, z: Math.sin(t) * rr },
-          fill: lerp(SPECK_FILL[0], SPECK_FILL[1], n),
-          jitter: m,
-          x: 0,
-          y: 0,
-          base: 0,
-          dist: 1,
-          size: 0
-        });
-      }
+    for (const { r, bearing, n, m } of scatter(rings)) {
+      const el = svgEl('rect');
+      attrs(el, { x: 0, y: 0, width: 0, height: 0, fill: 'currentColor' });
+      siltGrain.append(el);
+      specks.push({
+        el,
+        at: { x: Math.cos(bearing) * r, y: 0, z: Math.sin(bearing) * r },
+        fill: lerp(SPECK_FILL[0], SPECK_FILL[1], n),
+        jitter: m,
+        x: 0,
+        y: 0,
+        base: 0,
+        dist: 1,
+        size: 0
+      });
     }
   }
 
   /** Which elements exist, and what world points each one carries. */
   function build(): void {
     grain = stepOf(last?.lucidity ?? 0);
-    const ringSteps = RING_STEPS[grain]!;
-    const jointSteps = JOINT_STEPS[grain]!;
+    rise = view().rise;
+    ringSteps = RING_STEPS[grain]!;
+    jointSteps = JOINT_STEPS[grain]!;
     const joints = jointsAt(grain);
     const courses = COURSES[grain]!;
 
     rimRing = ring(WELL.height, WELL, ringSteps);
-    surfaceRing = ring(WELL.water, WELL, ringSteps);
     floorRing = ring(0, WELL, ringSteps);
 
     dry.replaceChildren();
@@ -250,21 +363,23 @@ export function makeFisheyeShaft(
     lines = [];
 
     // A joint runs the full height, cut at the surface so the two halves take
-    // their own opacity from the stylesheet.
+    // their own opacity from the stylesheet. Where the cut falls is the level's
+    // business, so the halves are walked per frame rather than settled here.
     for (let i = 0; i < joints; i++) {
-      const t = (i / joints) * Math.PI * 2;
-      strokeLine(dry, joint(t, WELL.water, WELL.height, WELL, jointSteps));
-      strokeLine(drowned, joint(t, 0, WELL.water, WELL, jointSteps));
+      const bearing = (i / joints) * Math.PI * 2;
+      strokeLine({ at: { bearing, under: false }, y: WELL.height });
+      strokeLine({ at: { bearing, under: true }, y: 0 });
     }
 
     // Courses of stone, evenly spaced in the well. The crowding toward the rim
     // is the lens doing it rather than a curve applied here.
     for (let k = 1; k <= courses; k++) {
       const y = (k / (courses + 1)) * WELL.height;
-      strokeLine(y > WELL.water ? dry : drowned, ring(y, WELL, ringSteps));
+      strokeLine({ pts: ring(y, WELL, ringSteps), y });
     }
 
     buildSilt(SILT_RINGS[grain]!);
+    buildWater();
     reproject();
   }
 
@@ -300,22 +415,128 @@ export function makeFisheyeShaft(
     }
   }
 
+  /**
+   * The rise, drawn whichever way the setting asks for. Both take the same
+   * level and the same waved surface; they differ only in what they put under
+   * it — one fill that deepens, or the halftone carried up with the water.
+   */
+  function paintWater(surface: readonly Point[], project: Project, cam: Camera): void {
+    const under = submerged(well, cam.eye) > 0;
+    // Where the surface crosses each column of the frame. Everything below the
+    // line it draws is water; above it is stone.
+    const line = under ? null : skyline(surface, project);
+
+    if (rise === 'wash') {
+      const { fill, opacity } = washOf(WELL, well, cam.eye);
+      // Under water the surface is overhead and there is no edge to close on,
+      // so the wash is the whole frame. That is the state drawing over the
+      // reading band, which it is allowed to do for as long as it lasts.
+      attrs(wash, { d: line ? closedUnder(line) : `M 0 0 H ${frame.w} V ${frame.h} H 0 Z`, fill });
+      wash.style.opacity = String(opacity);
+      return;
+    }
+
+    const spacing = DOT_SPACING[grain]!;
+    const deep = Math.max(1, frame.h - (line ? Math.min(...line) : 0));
+    for (const mote of motes) {
+      const top = line ? at(line, mote.x) : 0;
+      let size = 0;
+      if (mote.y >= top) {
+        // Light enters at the surface and does not reach the bottom.
+        const down = clamp01((mote.y - top) / deep);
+        const value = clamp01(0.95 - down * 0.8 + (mote.n - 0.5) * 0.3);
+        const swell = 1 + Math.sin((mote.y - top) * 0.055 - clock.phase) * 0.6 * clock.agitation;
+        size = Math.max(0, Math.round(value * (spacing - 2) * swell * 2) / 2);
+        if (size <= SPECK_FLOOR) size = 0;
+        else attrs(mote.el, { x: mote.x - size / 2, y: mote.y - size / 2, width: size, height: size });
+      }
+      if (size === 0 && mote.size !== 0) attrs(mote.el, { width: 0, height: 0 });
+      mote.size = size;
+    }
+  }
+
+  /** Columns across the frame, each holding the surface's screen height there. */
+  const COLUMNS = 48;
+
+  /**
+   * The surface as a height per column. The ring passes behind the camera and
+   * the lens throws that part of it off to the sides, so only the run the frame
+   * holds says anything about where the water is.
+   */
+  function skyline(surface: readonly Point[], project: Project): number[] {
+    const line = new Array<number>(COLUMNS).fill(Infinity);
+    for (const p of surface) {
+      const s = project(p);
+      if (!s || s.x < 0 || s.x > frame.w) continue;
+      const col = Math.min(COLUMNS - 1, Math.floor((s.x / frame.w) * COLUMNS));
+      if (s.y < line[col]!) line[col] = s.y;
+    }
+    // Columns the arc missed take their neighbour's height, so the line is
+    // continuous across the frame even where the ring is sparse.
+    let last = line.find((v) => v !== Infinity) ?? frame.h;
+    for (let i = 0; i < COLUMNS; i++) {
+      if (line[i] === Infinity) line[i] = last;
+      else last = line[i]!;
+    }
+    for (let i = COLUMNS - 1; i >= 0; i--) {
+      if (line[i] === Infinity) line[i] = last;
+      else last = line[i]!;
+    }
+    return line;
+  }
+
+  /** The surface's height at one px across the frame. */
+  const at = (line: readonly number[], x: number): number =>
+    line[Math.min(COLUMNS - 1, Math.max(0, Math.floor((x / frame.w) * COLUMNS)))]!;
+
+  /** The columns closed down over the bottom of the frame. */
+  function closedUnder(line: readonly number[]): string {
+    const step = frame.w / COLUMNS;
+    let d = `M 0 ${line[0]!.toFixed(1)} `;
+    for (let i = 0; i < COLUMNS; i++) d += `L ${((i + 0.5) * step).toFixed(1)} ${line[i]!.toFixed(1)} `;
+    d += `L ${frame.w} ${line[COLUMNS - 1]!.toFixed(1)} L ${frame.w} ${frame.h} L 0 ${frame.h} Z`;
+    return d;
+  }
+
   /** The built set through the current pose. Every frame of a move runs this. */
   function reproject(): void {
     const cam = camera.pose;
-    const project = projector(cam, WELL, frame);
+    // A push raises the surface and it settles back with the agitation, so the
+    // level is worked out per frame rather than carried between them.
+    well = wellAt(WELL, riseOf(clock.agitation, last?.turn ?? 0));
+    const project = projector(cam, well, frame);
 
     // The lip, the coin and the clip are the same closed polyline.
     const rimD = polyline(rimRing, project);
     attrs(rim, { d: rimD });
     attrs(coin, { d: rimD });
     attrs(holeShape, { d: rimD });
-    attrs(waterline, { d: polyline(surfaceRing, project) });
     attrs(siltEdge, { d: polyline(floorRing, project) });
 
-    for (const line of lines) attrs(line.el, { d: polyline(line.pts, project) });
+    // The surface, waved before it is projected: the ring's own `y` moves, so
+    // the bowing across it is the lens and not a screen-space path bent to look
+    // like one.
+    const surfaceRing: Point[] = [];
+    for (let i = 0; i <= ringSteps; i++) {
+      const bearing = (i / ringSteps) * Math.PI * 2;
+      surfaceRing.push({
+        x: Math.cos(bearing) * well.radius,
+        y: surfaceAt(well, bearing, clock.phase, clock.agitation),
+        z: Math.sin(bearing) * well.radius
+      });
+    }
+    attrs(waterline, { d: polyline(surfaceRing, project) });
+
+    for (const line of lines) {
+      attrs(line.el, { d: polyline(pointsOf(line, well), project) });
+      // A course changes hands when the water reaches it, which is rare enough
+      // to be worth a check and not a rebuild.
+      const side = sideOf(line, well);
+      if (line.el.parentNode !== side) side.append(line.el);
+    }
 
     placeSilt(project, cam);
+    paintWater(surfaceRing, project, cam);
 
     // The light through the opening, placed off the rim's own box. The whole
     // ring is wanted here, off-frame edges and all: it is a shape being lit,
@@ -365,6 +586,9 @@ export function makeFisheyeShaft(
   function resize(): void {
     frame = { w: host.clientWidth || 800, h: host.clientHeight || 600 };
     svg.setAttribute('viewBox', `0 0 ${frame.w} ${frame.h}`);
+    // The flooded grain is a screen grid, so it is the one part of the set the
+    // frame decides.
+    buildWater();
     reproject();
     opts.onLayout?.(bands);
   }
@@ -431,7 +655,9 @@ export function makeFisheyeShaft(
         camera.jump(target);
       }
 
-      draw();
+      // The level is a function of this beat, so the beat reprojects: waiting
+      // for the water's own clock would land the rise a tick late.
+      reproject();
     },
     bands: () => bands,
     flash: chrome.flash,

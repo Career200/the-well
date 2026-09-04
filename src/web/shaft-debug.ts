@@ -14,6 +14,8 @@ import { REST_POSE, WELL } from './projection.js';
 import { PLACES } from './shaft.js';
 import type { PlaceId, Shaft, ShaftFactory, ShaftState } from './shaft.js';
 import { makeFisheyeShaft } from './shaft-fisheye.js';
+import type { View } from './shaft-fisheye.js';
+import type { Rise } from './water.js';
 import { makeShaft } from './visuals.js';
 
 const host = document.getElementById('shaft') as HTMLElement;
@@ -67,9 +69,16 @@ type Motion = 'off' | 'on';
 /** The camera's own dials, so the panel can find the numbers by eye. */
 const dials: Dials = { ...DIALS, rest: { ...DIALS.rest } };
 
+/**
+ * How a rise draws. Both are built and neither is settled; the bar switches
+ * between them so the pair can be looked at against the same push.
+ */
+let rise: Rise = 'wash';
+const view = (): View => ({ dials, rise });
+
 const RENDERERS: Record<Motion, ShaftFactory> = {
   off: makeShaft,
-  on: (host, opts) => makeFisheyeShaft(host, opts, () => dials),
+  on: (host, opts) => makeFisheyeShaft(host, opts, view),
 };
 
 // The camera is what the harness is for; the flat picture is the comparison.
@@ -99,6 +108,17 @@ const motionButton = barButton(`motion: ${motion}`, () => {
   sync();
   motionButton.textContent = `motion: ${motion}`;
   note(`${motion === 'off' ? 'the flat diagram' : 'the camera'}`);
+});
+
+// Switching the treatment rebuilds: the flooded grain has motes and the wash
+// has none, so which elements exist depends on it.
+const riseButton = barButton(`rise: ${rise}`, () => {
+  rise = rise === 'wash' ? 'grain' : 'wash';
+  shaft.destroy();
+  shaft = build();
+  sync();
+  riseButton.textContent = `rise: ${rise}`;
+  note(rise === 'wash' ? 'a fill that deepens as it climbs' : 'the halftone carried up the shaft');
 });
 
 // ---- game events ----------------------------------------------------------

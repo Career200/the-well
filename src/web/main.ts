@@ -1,14 +1,24 @@
 import { newGame, NOTHING_NEW, runStatus, step, TUNING } from '../core/engine.js';
 import type { Game, PlayerAction } from '../core/engine.js';
 import { pack } from '../content/index.js';
+import { NOTICED, UNDENIABLE } from '../content/scenes.js';
 import { feelBand, feelOf, water } from '../core/readout.js';
-import { BELIEFS, EMOTIONS } from '../core/types.js';
 import type { LineKind, NarrationLine } from '../core/types.js';
 import { makeShaft, PLACES } from './visuals.js';
 import type { Bands, PlaceId } from './visuals.js';
 import { initAnalytics } from './analytics.js';
+import type { DevPanel } from './dev.js';
 
 initAnalytics();
+
+/** Dev-only, and dynamically imported so the module is absent from a build. */
+let dev: DevPanel | undefined;
+if (import.meta.env.DEV) {
+  void import('./dev.js').then((m) => {
+    dev = m.attach(() => game);
+    dev.update();
+  });
+}
 
 const seed = Number(new URLSearchParams(location.search).get('seed') ?? Math.floor(Math.random() * 1e5));
 let game: Game = newGame(pack, seed, { below: true });
@@ -51,6 +61,8 @@ CELLS.forEach((cell, index) => {
   const button = document.createElement('button');
   button.type = 'button';
   button.className = 'cell';
+  // What the stylesheet reads to give the belonging its hue.
+  button.dataset['id'] = cell.id;
   // The name lives in a span so `visibility: hidden` can hide it without
   // collapsing the box or leaving the word in the accessibility tree.
   const label = document.createElement('span');
@@ -157,11 +169,13 @@ const gapAfter = (line: NarrationLine, next: NarrationLine): number =>
 const MAX_LINES = 12;
 
 /** Register and caption both come from the engine; the client only styles. */
-function say(text: string, kind: LineKind | 'marker', delayMs = 0, subject?: string): void {
+function say(text: string, kind: LineKind | 'marker', delayMs = 0, subject?: string, subjectId?: string): void {
   const p = document.createElement('p');
   p.className = kind;
   p.textContent = text;
   if (subject) p.dataset['subject'] = subject;
+  // The caption can be worded any way; the id is what the hue is keyed on.
+  if (subjectId) p.dataset['subjectId'] = subjectId;
   if (delayMs > 0) p.style.animationDelay = `${Math.round(delayMs)}ms`;
   log.append(p);
   // Coda lines are exempt from the cap; the whole ending stays.
@@ -180,7 +194,7 @@ function say(text: string, kind: LineKind | 'marker', delayMs = 0, subject?: str
 function narrate(lines: readonly NarrationLine[]): number {
   let delay = 0;
   lines.forEach((line, i) => {
-    say(line.text, line.kind, delay, line.subject);
+    say(line.text, line.kind, delay, line.subject, line.subjectId);
     // The place comes up with its own sentence, not with the beat.
     reveal(line.subjectId, delay);
     const next = lines[i + 1];
@@ -193,13 +207,20 @@ function act(action: PlayerAction): void {
   const wasInScene = game.mode.kind === 'scene';
   // An event, not a condition, so it is read from the click.
   pushedThisBeat = action.kind === 'haunt';
+  const lucidityBefore = game.state.presence.lucidity;
   const result = step(game, action);
   game = result.game;
   const delay = narrate(result.lines);
+  // The coat's hiding is the only thing that takes lucidity back, so a drop
+  // is the beat somebody came and was missed. Timed to the last line, because
+  // it is the answer to what was just read.
+  if (game.state.presence.lucidity < lucidityBefore) {
+    setTimeout(() => shaft.withdraw(), delay);
+  }
   if (!quiet && runStatus(game).kind === 'quiet') {
     quiet = true;
     const last = result.lines.at(-1);
-    const stop: NarrationLine = { kind: 'system', text: pack.presence.nothingFurther };
+    const stop: NarrationLine = { kind: 'idle', text: pack.presence.nothingFurther };
     say(stop.text, stop.kind, last ? delay + gapAfter(last, stop) : 0);
   }
   // Always written; CSS decides visibility, so debug shows the whole run.
@@ -287,6 +308,21 @@ function forget(): void {
   }, 13000);
 }
 
+/**
+ * What the two levers have done to whoever is up there, this scene. Both are
+ * kept for the length of a scene and both are gone the moment it ends, so an
+ * empty rim always reads as nothing having happened — which is exactly what
+ * did happen when a lever was pulled at one.
+ */
+function atTheRim(): { recoil: 0 | 1 | 2; resonating: string | null } {
+  if (game.mode.kind !== 'scene') return { recoil: 0, resonating: null };
+  const { pressure, resonance } = game.mode.ctx;
+  return {
+    recoil: pressure >= UNDENIABLE ? 2 : pressure >= NOTICED ? 1 : 0,
+    resonating: resonance?.object ?? null,
+  };
+}
+
 function render(): void {
   const inScene = game.mode.kind === 'scene';
   // Backstop for any place whose line beat zero passed without saying. Not
@@ -300,6 +336,7 @@ function render(): void {
     visibility: game.mode.kind === 'over' ? 0.28 : 1,
     lucidity: game.state.presence.lucidity,
     occupied: inScene,
+    ...atTheRim(),
     charge: game.state.presence.charge,
     pressing: pushedThisBeat,
     turn: game.state.turn,
@@ -373,7 +410,7 @@ function render(): void {
     log.tabIndex = 0;
     fitLog(shaft.bands());
     if (game.mode.spine === 'forgotten') forget();
-    if (import.meta.env.DEV) console.log(dump());
+    dev?.update();
     return;
   }
 
@@ -385,33 +422,7 @@ function render(): void {
 
   fitLog(shaft.bands());
 
-  if (import.meta.env.DEV) console.log(dump());
-}
-
-function dump(): object {
-  const s = game.state;
-  const status = runStatus(game);
-  return {
-    turn: s.turn,
-    seed: s.seed,
-    mode: game.mode.kind,
-    beliefs: Object.fromEntries(BELIEFS.map((b) => [b, Number(s.beliefs[b].toFixed(2))])),
-    people: Object.fromEntries(
-      Object.values(s.people).map((person) => [
-        person.name,
-        {
-          present: person.present,
-          emotions: Object.fromEntries(
-            EMOTIONS.filter((e) => person.emotions[e] > 0.01).map((e) => [e, Number(person.emotions[e].toFixed(2))]),
-          ),
-        },
-      ]),
-    ),
-    status: status.kind === 'open' ? 'open' : `quiet — ${status.reason}`,
-    objects: Object.fromEntries(Object.values(s.objects).map((o) => [o.id, Number(o.charge.toFixed(2))])),
-    flags: Object.keys(s.flags).filter((f) => s.flags[f]),
-    played: s.history.map((h) => `${h.scene}:${h.outcome}`),
-  };
+  dev?.update();
 }
 
 for (const button of document.querySelectorAll<HTMLButtonElement>('[data-act]')) {

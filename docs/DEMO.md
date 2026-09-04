@@ -158,8 +158,9 @@ from here), `quiet` (nothing can fire from any reachable future). Not an ending.
 **the coda** — the ending. Twelve spines in `content/coda.ts`, first match wins.
 `forgotten` is the one that erodes as it is read.
 
-**register** — `LineKind`: `scene`, `fact`, `idle`, `system`, `coda`. The engine
-decides; the client only dresses it.
+**register** — `LineKind`: `scene`, `fact`, `idle`, `coda`. The engine decides;
+the client only dresses it. `idle` carries the texture of an empty turn, the
+village said back, and the stop.
 
 ### The picture
 

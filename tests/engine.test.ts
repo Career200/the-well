@@ -36,6 +36,19 @@ describe('determinism', () => {
     expect(JSON.stringify(a.state)).toEqual(JSON.stringify(b.state));
   });
 
+  it('same seed and actions produce the same narration', () => {
+    const actions = [...wait(40)];
+    const said = (): string[] => {
+      let game = newGame(pack, 7);
+      return actions.flatMap((action) => {
+        const result = step(game, action);
+        game = result.game;
+        return result.lines.map((l) => `${l.kind}:${l.text}`);
+      });
+    };
+    expect(said()).toEqual(said());
+  });
+
   it('different seeds diverge', () => {
     const actions = wait(30);
     const a = play(newGame(pack, 1), actions);
@@ -522,6 +535,91 @@ describe('the village, said back', () => {
       if (now) heard++;
     }
     expect(heard).toBeGreaterThan(0);
+  });
+
+  const heardOver = (game: Game, turns: number): Set<string> => {
+    const said = new Set<string>();
+    let next = game;
+    for (let i = 0; i < turns; i++) {
+      const result = step(next, { kind: 'wait' });
+      next = result.game;
+      for (const line of result.lines) if (lines.has(line.text)) said.add(line.text);
+    }
+    return said;
+  };
+
+  it('says they are thinking about it while they have decided nothing', () => {
+    const start = idle(newGame(pack, 5));
+    const game = { ...start, state: applyEffects(start.state, [{ kind: 'well', field: 'attention', delta: 0.3 }]) };
+    expect(heardOver(game, 20)).toEqual(new Set([pack.readout!.attention[0]]));
+  });
+
+  it('says what they believe instead, as soon as they believe it', () => {
+    const start = idle(newGame(pack, 5));
+    const game = {
+      ...start,
+      state: applyEffects(start.state, [
+        { kind: 'well', field: 'attention', delta: 0.3 },
+        { kind: 'belief', belief: 'tragedy', delta: 0.5 },
+      ]),
+    };
+    // The dial is still up, and is outranked for as long as they have a story.
+    expect(heardOver(game, 20)).toEqual(new Set([pack.readout!.beliefs.tragedy]));
+  });
+
+  it('a loud dial outranks the belief again', () => {
+    const start = idle(newGame(pack, 5));
+    const game = {
+      ...start,
+      state: applyEffects(start.state, [
+        { kind: 'well', field: 'dread', delta: 0.9 },
+        { kind: 'belief', belief: 'tragedy', delta: 0.5 },
+      ]),
+    };
+    expect(heardOver(game, 20)).toEqual(new Set([pack.readout!.dread[1]]));
+  });
+
+  /**
+   * A scene one beat from resolving, with a village that already has something
+   * to say, so the only thing under test is whether the outcome lets it.
+   */
+  const closing = (seed: number, pressure: number): Game => {
+    const start = newGame(pack, seed);
+    const scene = scenes.find((s) => s.id === 'first-water')!;
+    return {
+      ...start,
+      state: applyEffects(start.state, [{ kind: 'belief', belief: 'tragedy', delta: 0.5 }]),
+      mode: {
+        kind: 'scene',
+        scene: scene.id,
+        ctx: { pressure, resonance: null, beatIndex: scene.beats.length - 1 },
+      },
+    };
+  };
+
+  const saidOnClose = (seed: number, pressure: number): boolean =>
+    step(closing(seed, pressure), { kind: 'wait' }).lines.some((l) => lines.has(l.text));
+
+  it('speaks on the beat an outcome moves the village', () => {
+    // Heavy pressure takes `terrified`, which moves a belief and both dials.
+    const heard = Array.from({ length: 200 }, (_, seed) => saidOnClose(seed, 0.9)).filter(Boolean).length;
+    expect(heard).toBeGreaterThan(120);
+    expect(heard).toBeLessThan(180);
+  });
+
+  it('says nothing when the outcome moved nobody', () => {
+    // No pressure and no resonance takes `quiet`, whose effects are empty.
+    for (let seed = 0; seed < 200; seed++) expect(saidOnClose(seed, 0)).toBe(false);
+  });
+
+  it('does not repeat itself on the turn after an outcome', () => {
+    for (let seed = 0; seed < 60; seed++) {
+      const closed = step(closing(seed, 0.9), { kind: 'wait' });
+      if (!closed.lines.some((l) => lines.has(l.text))) continue;
+      const said = closed.lines.filter((l) => lines.has(l.text)).map((l) => l.text);
+      const next = step(closed.game, { kind: 'wait' }).lines.map((l) => l.text);
+      for (const line of said) expect(next).not.toContain(line);
+    }
   });
 });
 

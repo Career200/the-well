@@ -20,11 +20,11 @@ export type Scalar = number;
  *
  *   scene   a storylet's beats and outcome, and what happens inside one.
  *   fact    the world resolving plainly: a subject, a use, a refusal.
- *   idle    the texture of an empty turn. The only faded one.
- *   system  the run talking about itself: the stop, the phase ending.
+ *   idle    the texture of an empty turn, the village said back, and the
+ *           stop. The only faded one.
  *   coda    the ending. Arrives once.
  */
-export type LineKind = 'scene' | 'fact' | 'idle' | 'system' | 'coda';
+export type LineKind = 'scene' | 'fact' | 'idle' | 'coda';
 
 /** One narrated line, with the register it is spoken in. */
 export interface NarrationLine {

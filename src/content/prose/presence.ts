@@ -24,8 +24,6 @@ export const presence: PresenceProse = {
   holdFallback: 'You gather yourself around the {thing}. It remembers more than you do.',
 
   stalled: 'The light goes on moving. Nothing more is coming to the well while the well is what it is now.',
-  quiet:
-    'Nothing is coming that has not already come. The light will go on moving across the water, and that is all it will ever do now.',
   nothingFurther: 'nothing further will happen',
 
   ambientFallback: 'Nothing. The stone sweats. Somewhere above, the light moves a hand-width.',

@@ -1,0 +1,27 @@
+/**
+ * The dev readout. Imported by `web/dev.ts`, which `main.ts` only pulls in
+ * under `import.meta.env.DEV`, so none of this reaches a build.
+ *
+ * Deliberately plain: an instrument panel, not part of the game.
+ */
+
+/* Scrolls, so it takes clicks, and covers the left of the picture while open. */
+#dev {
+  position: fixed;
+  inset: 0 auto 0 0;
+  z-index: 3;
+  width: min(22rem, 46vw);
+  overflow: auto;
+  margin: 0;
+  padding: 0.6rem;
+  background: rgba(13, 12, 10, 0.9);
+  border-right: 1px solid var(--edge);
+  color: var(--cold);
+  font-family: ui-monospace, monospace;
+  font-size: 0.62rem;
+  line-height: 1.45;
+  white-space: pre-wrap;
+}
+
+/* `style.css` hides the markers `main.ts` writes every beat; this shows them. */
+body.dev #log p.marker { display: block; }

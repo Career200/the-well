@@ -125,7 +125,6 @@ const spoken = (
     : fact(text);
 };
 const idle = (text: string): NarrationLine => ({ kind: "idle", text });
-const system = (text: string): NarrationLine => ({ kind: "system", text });
 
 export type Mode =
   /** `lastAmbient` and `lastReadout` are the lines this mode must not repeat. */
@@ -649,12 +648,12 @@ export function step(game: Game, action: PlayerAction): StepResult {
     };
   }
 
-  // The stop lines only speak for a run that has not ended; otherwise they
-  // announce an ending the coda is about to tell properly.
+  // The stop line only speaks for a run that has not ended; otherwise it
+  // announces an ending the coda is about to tell properly. `quiet` is
+  // unreachable here: `doorOut` returns `starved` on the same beat.
   const after = runStatus(result.game).kind;
-  if (after !== before && !door) {
-    if (after === "stalled") result.lines.push(system(said.stalled));
-    if (after === "quiet") result.lines.push(system(said.quiet));
+  if (after !== before && !door && after === "stalled") {
+    result.lines.push(idle(said.stalled));
   }
   return result;
 }
@@ -914,14 +913,30 @@ function advanceScene(game: Game, lines: NarrationLine[]): StepResult {
 
   const outcome = resolveOutcome(playing, game.state, ctx);
   lines.push(scene(outcome.text(game.state, ctx)));
-  const state = applyEffects(
-    applyEffects(game.state, outcome.effects(game.state, ctx)),
-    resonanceEffects(game, playing, ctx)
+  const changes = [
+    ...outcome.effects(game.state, ctx),
+    ...resonanceEffects(game, playing, ctx)
+  ];
+  const state = applyEffects(game.state, changes);
+
+  // The village, on the beat it moved. Only when the beat actually moved it:
+  // an outcome that touched nobody has nothing new to be said about.
+  let mode: Mode = { kind: "idle" };
+  const moved = changes.some(
+    (effect) => effect.kind === "belief" || effect.kind === "well"
   );
+  if (moved && game.rng.next() < READOUT_AFTER_OUTCOME) {
+    const heard = readout({ ...game, state });
+    if (heard) {
+      lines.push(idle(heard.line));
+      mode = { kind: "idle", lastReadout: heard.key };
+    }
+  }
+
   return {
     game: {
       ...game,
-      mode: { kind: "idle" },
+      mode,
       state: {
         ...state,
         history: [
@@ -970,14 +985,31 @@ function resonanceEffects(
   return effects;
 }
 
-/** A quality has to be this loud before the village has anything to say. */
-const READOUT_FLOOR = 0.3;
+/**
+ * A belief has to be this far up before the village has anything to say. Most
+ * outcomes move one by 0.1 to 0.4, so this asks for more than a single nudge
+ * and less than a verdict.
+ */
+const READOUT_FLOOR = 0.2;
 /** The two well dials get a second band above this. */
 const READOUT_LOUD = 0.6;
+/** How often an outcome that moved the village is followed by them saying so. */
+const READOUT_AFTER_OUTCOME = 0.75;
 
 /**
- * The village, said back. Loudest quality wins, and only when it is not the
- * one said last.
+ * The village, said back, and only when it is not the one said last. Three
+ * things it can be, in this order:
+ *
+ *   a loud dial     past `READOUT_LOUD`, it outranks anything they believe
+ *   what they think the loudest belief, once it is past `READOUT_FLOOR`
+ *   that they think about it   a dial past the floor, when no belief is
+ *
+ * Beliefs take the middle band rather than sharing it with the dials, because
+ * `attention` opens at 0.1 and takes something from every outcome: ranked
+ * against beliefs that open at 0 it wins nearly every early reading, and the
+ * village ends up saying it is thinking about the well long before it ever
+ * says what it thinks the well is. It still gets to say so — but only while
+ * they have not decided.
  */
 function readout(
   game: Game,
@@ -986,25 +1018,32 @@ function readout(
   const lines = game.pack.readout;
   if (!lines) return undefined;
   const { beliefs, well } = game.state;
-  // A dial this far up outranks any belief.
-  const dials: [string, number][] = [
+  const loudest = (entries: [string, number][]): [string, number] =>
+    entries.sort((a, b) => b[1] - a[1])[0]!;
+
+  const dial = loudest([
     ["attention", well.attention],
     ["dread", well.dread]
-  ];
-  const loud = dials
-    .filter(([, v]) => v > READOUT_LOUD)
-    .sort((a, b) => b[1] - a[1])[0];
-  const ranked: [string, number][] = [...Object.entries(beliefs), ...dials];
-  const [name, value] = loud ?? ranked.sort((a, b) => b[1] - a[1])[0]!;
-  if (value <= READOUT_FLOOR) return undefined;
+  ]);
+  const belief = loudest(Object.entries(beliefs));
 
-  const dial = name === "attention" || name === "dread";
-  const band = dial && value > READOUT_LOUD ? 1 : 0;
-  const key = dial ? `${name}.${band}` : name;
+  const said: [string, string] | undefined =
+    dial[1] > READOUT_LOUD
+      ? [dial[0], `${dial[0]}.1`]
+      : belief[1] > READOUT_FLOOR
+        ? [belief[0], belief[0]]
+        : dial[1] > READOUT_FLOOR
+          ? [dial[0], `${dial[0]}.0`]
+          : undefined;
+  if (!said) return undefined;
+
+  const [name, key] = said;
   if (key === avoid) return undefined;
-  const line = dial
-    ? lines[name as "attention" | "dread"][band]
-    : lines.beliefs[name as Belief];
+  const line = key.endsWith('.1')
+    ? lines[name as "attention" | "dread"][1]
+    : key.endsWith('.0')
+      ? lines[name as "attention" | "dread"][0]
+      : lines.beliefs[name as Belief];
   return line ? { key, line } : undefined;
 }
 

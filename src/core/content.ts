@@ -53,8 +53,8 @@ export interface PresenceProse {
   spentBelonging: string;
   /** `{thing}` is substituted with the belonging's name. */
   holdFallback: string;
+  /** Said once `runStatus` reaches `stalled` and the run is still open. */
   stalled: string;
-  quiet: string;
   /** Said by the client once `runStatus` reaches `quiet`. */
   nothingFurther: string;
   ambientFallback: string;

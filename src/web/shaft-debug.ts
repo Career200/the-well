@@ -6,6 +6,7 @@
  * Push and pause live in an always-visible bar, since the panel covers the
  * picture on a phone. Single-stepping stays in the panel.
  */
+import './shaft-debug.css';
 import { TUNING } from '../core/engine.js';
 import { makeShaft, PLACES, TICK_MS } from './visuals.js';
 import type { PlaceId, ShaftState } from './visuals.js';
@@ -42,6 +43,8 @@ const state: ShaftState = {
   turn: 0,
   signals: [],
   asking: true,
+  recoil: 0,
+  resonating: null,
 };
 
 const signals = new Set<PlaceId>();
@@ -113,6 +116,26 @@ function toggle(
   return input;
 }
 
+/** A one-of-many row. The value is a string; the caller reads it back. */
+function choice(box: HTMLElement, label: string, options: readonly string[], set: (value: string) => void): void {
+  const row = document.createElement('label');
+  const name = document.createElement('span');
+  name.textContent = label;
+  const select = document.createElement('select');
+  for (const option of options) {
+    const item = document.createElement('option');
+    item.value = option;
+    item.textContent = option;
+    select.append(item);
+  }
+  select.onchange = () => {
+    set(select.value);
+    sync();
+  };
+  row.append(name, select);
+  box.append(row);
+}
+
 function action(box: HTMLElement, label: string, run: () => void): void {
   const button = document.createElement('button');
   button.type = 'button';
@@ -129,6 +152,13 @@ toggle(stats, 'occupied', () => state.occupied, (on) => (state.occupied = on));
 const pressingBox = toggle(stats, 'pressing', () => state.pressing, (on) => {
   state.pressing = on;
   if (on) state.turn++;
+});
+
+// The figure. Only legible with `occupied` on — there is nobody there
+// otherwise, and nobody is what an empty rim is supposed to look like.
+choice(stats, 'recoil', ['0', '1', '2'], (value) => (state.recoil = Number(value) as 0 | 1 | 2));
+choice(stats, 'resonating', ['none', 'ring', 'whistle', 'knife', 'coat'], (value) => {
+  state.resonating = value === 'none' ? null : value;
 });
 
 const chargeBox = (): HTMLInputElement => stats.querySelector<HTMLInputElement>('input[data-key="charge"]')!;
@@ -148,6 +178,12 @@ barButton('push', () => {
   state.charge = Math.max(0, state.charge - TUNING.pressCost);
   show();
   note(`push — charge ${state.charge.toFixed(2)}`);
+});
+
+// Runs against an empty rim, which is the only state it ever plays in.
+barButton('withdraw', () => {
+  shaft.withdraw();
+  note('under the coat — somebody came and was missed');
 });
 
 let paused = false;

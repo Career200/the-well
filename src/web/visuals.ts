@@ -131,6 +131,16 @@ export interface ShaftState {
   lucidity: number;
   /** Somebody is at the rim. */
   occupied: boolean;
+  /**
+   * How far the figure has drawn back, in steps. The caller decides where the
+   * bands are; this only knows that 0 is over the rim and 2 is nearly gone.
+   */
+  recoil: 0 | 1 | 2;
+  /**
+   * The belonging reaching them, if one is. Written to the figure as
+   * `data-subject-id`, which is where the stylesheet keeps the hue map.
+   */
+  resonating: string | null;
   /** Presence charge. Full is glass; empty never settles. */
   charge: number;
   /** This beat was a push. An event, not a condition. */
@@ -171,6 +181,11 @@ export interface Shaft {
    * number appearing anywhere.
    */
   flash(): void;
+  /**
+   * Somebody came and did not stay: the figure surfaces and goes back out of
+   * the light inside one beat. The only picture the coat's hiding has.
+   */
+  withdraw(): void;
   /** The clock, for the debug harness. The game never touches these. */
   rate(ms: number): void;
   freeze(): void;
@@ -405,6 +420,8 @@ export function makeShaft(host: HTMLElement, opts: ShaftOptions = {}): Shaft {
   let surface: Surface = { cx: 0, cy: 0, rx: 0, ry: 0 };
   /** Which grain the picture is currently built at. A step rebuilds it. */
   let grain = -1;
+  /** The figure's own half-height, in px. Its motion is scaled to this. */
+  let litRy = 0;
   /** The ripple, owned by the clock and by nothing else. */
   let phase = 0;
   /** Current unsettledness, eased toward the charge-derived target per tick. */
@@ -516,9 +533,19 @@ export function makeShaft(host: HTMLElement, opts: ShaftOptions = {}): Shaft {
     attrs(halo, { cx, cy: rimCy, rx: rimRx * 1.5, ry: rimRy * 2.4 });
     attrs(rim, { cx, cy: rimCy, rx: rimRx, ry: rimRy });
     // Sized to the lit core rather than the hole, matching the mask.
-    const litRy = lit * 0.38;
-    attrs(head, { cx, cy: rimCy + litRy * 0.42, rx: lit * 0.2, ry: litRy * 0.4 });
+    litRy = lit * 0.38;
+    const headCy = rimCy + litRy * 0.42;
+    const headRy = litRy * 0.4;
+    attrs(head, { cx, cy: headCy, rx: lit * 0.2, ry: headRy });
     attrs(shoulders, { cx, cy: rimCy + litRy * 1.3, rx: lit * 0.55, ry: litRy * 0.62 });
+    // Both scale about a fixed point rather than moving: the figure's own
+    // bottom runs past the rim's near edge and is cut off there, so anchoring
+    // to that edge keeps it a body leaning over stone at every size. Drawing
+    // back shrinks toward it — sinking behind the rim, not floating up the
+    // shaft. The head anchors to its own chin, so it can come on further than
+    // the body does.
+    figure.style.transformOrigin = `${cx}px ${rimCy + rimRy}px`;
+    head.style.transformOrigin = `${cx}px ${headCy + headRy}px`;
     // The sky signals by scaling about its own centre, so it stays in the hole.
     skyG.style.setProperty('--sky-origin', `${cx}px ${rimCy}px`);
 
@@ -725,6 +752,18 @@ export function makeShaft(host: HTMLElement, opts: ShaftOptions = {}): Shaft {
     svg.style.filter = `brightness(${(0.4 + eased * 0.6).toFixed(3)})${haze > 0 ? ` blur(${haze.toFixed(2)}px)` : ''}`;
 
     figure.classList.toggle('there', state.occupied);
+    // Both at once, as one scale: pushing drives them back down behind the
+    // rim, a belonging brings them further over it. A scene that had both
+    // nets out, which is the true reading of that scene.
+    const scale = [1, 0.9, 0.79][state.recoil]! * (state.resonating ? 1.12 : 1);
+    figure.style.transform = scale === 1 ? '' : `scale(${scale.toFixed(3)})`;
+    // Leaning in is mostly the head: it is the nearest part of them, so it
+    // gains the most, on top of whatever the body is doing.
+    head.style.transform = state.resonating ? 'scale(1.17)' : '';
+    // The hue map lives in the stylesheet, keyed the same way the log and the
+    // cells are keyed, so there is one mapping and the picture reads it.
+    if (state.resonating) figure.dataset['subjectId'] = state.resonating;
+    else delete figure.dataset['subjectId'];
 
     for (const id of PLACES) {
       const lit = state.signals.includes(id);
@@ -797,6 +836,12 @@ export function makeShaft(host: HTMLElement, opts: ShaftOptions = {}): Shaft {
       void corners.offsetWidth; // restart it even if one is already running
       corners.classList.add('flash');
       setTimeout(() => corners.classList.remove('flash'), 1100);
+    },
+    withdraw(): void {
+      figure.classList.remove('withdrawing');
+      void (figure as unknown as HTMLElement).offsetWidth; // restart a running one
+      figure.classList.add('withdrawing');
+      setTimeout(() => figure.classList.remove('withdrawing'), 2600);
     },
     rate(ms: number): void {
       rate = Math.max(16, ms);

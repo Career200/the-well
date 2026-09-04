@@ -27,9 +27,12 @@ const scene = <K extends SceneKey>(id: K, spec: SceneSpec<K>): Scene => {
 const feel = (state: WorldState, person: PersonId, emotion: Emotion): number =>
   state.people[person]?.emotions[emotion] ?? 0;
 
-/** Pressure bands. Below `NOTICED` the living explain it away. */
-const NOTICED = 0.25;
-const UNDENIABLE = 0.6;
+/**
+ * Pressure bands. Below `NOTICED` the living explain it away. Exported so a
+ * client can draw the same three bands the outcomes are chosen on.
+ */
+export const NOTICED = 0.25;
+export const UNDENIABLE = 0.6;
 
 /** Fixed for a run: `requires` is pure and is evaluated against probe worlds. */
 const coin = (seed: number): boolean => ((Math.imul(seed ^ 0x9e3779b9, 0x85ebca6b) >>> 16) & 1) === 1;

@@ -1,3 +1,11 @@
+/**
+ * The game. Linked by `index.html`, and by `shaft.html` for the tokens, the
+ * button base and the picture.
+ *
+ * The dev readout is in `dev.css` and the harness panel in `shaft-debug.css`;
+ * each is imported by the module that owns it, so neither reaches a build.
+ */
+
 :root {
   color-scheme: dark;
   --ink: #cfc8bd;
@@ -6,11 +14,31 @@
   --wet: #1d1c17;
   --edge: #2b2924;
   --cold: #7d94a3;
-  /* A belonging's temperature, warm down to spent. One direction only. */
+  /* Belonging charge, warm down to spent. */
   --warm: #c98f5c;
   --cooling: #9d8a72;
   --spent: #5c5850;
+
+  /* One per `Emotion`. Four are carried by a belonging, `fear` comes from
+     pressure, `anger` has no carrier. */
+  --grief: #6f7aa0;
+  --tenderness: #bd8189;
+  --guilt: #87855a;
+  --curiosity: #7fa39b;
+  --fear: #a8b4b8;
+  --anger: #a55a3f;
+
+  /* Default, inherited. Set on :root because a bare attribute selector cannot
+     outrank `#log p.fact`. */
+  --hue: var(--edge);
 }
+
+/* The one place a subject id becomes a colour, for every element that shows
+   one: the log line, the cell, the figure. */
+[data-subject-id='ring'], .cell[data-id='ring'] { --hue: var(--tenderness); }
+[data-subject-id='whistle'], .cell[data-id='whistle'] { --hue: var(--curiosity); }
+[data-subject-id='knife'], .cell[data-id='knife'] { --hue: var(--guilt); }
+[data-subject-id='coat'], .cell[data-id='coat'] { --hue: var(--grief); }
 
 * { box-sizing: border-box; }
 
@@ -18,17 +46,14 @@ body {
   margin: 0;
   background: radial-gradient(120% 90% at 50% -20%, #23211b 0%, var(--stone) 60%);
   color: var(--ink);
-  /* Scales down on a phone so twelve lines still fit the band, and never
-     grows past comfortable on a desktop. */
+  /* Floor keeps twelve lines inside the band on a phone; ceiling caps it. */
   font: clamp(14px, 1.15vw + 10px, 17px) / 1.6 Georgia, 'Iowan Old Style', serif;
   min-height: 100vh;
+  /* The shaft runs the full viewport width and may overhang. */
+  overflow-x: hidden;
 }
 
-body { overflow-x: hidden; }
-
-/* A narrow measure — ~52 characters, short of comfortable on purpose. Wide
-   columns read as room; this one should read as a shaft. The side padding
-   gives some of itself back on a phone, but never all of it. */
+/* ~52 characters. */
 #app {
   max-width: 28rem;
   margin: 0 auto;
@@ -40,10 +65,9 @@ body { overflow-x: hidden; }
   position: relative;
 }
 
-/* Everything the player reads or touches sits above the shaft. It has to be
-   every direct child that is not the shaft: the place regions inside `#shaft`
+/* Every direct child that is not the shaft. The place regions inside `#shaft`
    take pointer events across the whole viewport, so anything left behind them
-   is unclickable, not merely underneath. */
+   is unclickable rather than merely overlapped. */
 #app > header,
 #app > #log,
 #app > footer {
@@ -67,17 +91,12 @@ h1 {
   margin: 0;
 }
 
-/* Margins, not padding: padding is inside the scroll area and scrolls away
-   with the text, which puts the coin of sky back in the middle of a sentence.
-   The values here are only the pre-script fallback — `fitLog` in main.ts sets
-   both from the shaft's own geometry. */
-/* No scrollback and no scrollbar. Lines stack to the bottom of the band, and
-   what will not fit rises out of the top and is gone — the room is what you
-   can see, and nothing down here is ever recovered. */
+/* Margins rather than padding: padding sits inside the scroll area and scrolls
+   away with the text. Both values here are only the pre-script fallback —
+   `fitLog` in main.ts sets them from the shaft's geometry. */
 #log {
   flex: 1;
-  /* The places are behind the words now, and the words are not a lid: a tap
-     that lands on a sentence is a tap on whatever the sentence is over. */
+  /* The words are not a lid: a tap on a sentence reaches the place behind it. */
   pointer-events: none;
   min-height: 0;
   display: flex;
@@ -86,28 +105,21 @@ h1 {
   overflow: hidden;
   margin: 4.5rem 0 5.5rem;
   padding: 0;
-  /* What is on its way out dissolves rather than being guillotined. */
   mask-image: linear-gradient(to bottom, transparent 0, #000 3.5rem);
 }
 
-/* Once the coda is the only thing left: from the top, whole, and re-readable.
-   The scrollbar comes back for exactly this — an ending you cannot get to the
-   end of is not an ending. */
-/* The one exception: a coda long enough to scroll has to be draggable, so
-   the words take their events back once they are all there is. */
+/* Once the coda is all that is left it reads from the top, scrolls, and takes
+   its pointer events back. */
 #log.ended {
   pointer-events: auto;
   justify-content: flex-start;
   overflow-y: auto;
   mask-image: none;
-  /* No bar. See `fadeCoda` in main.ts — the edges of the text carry this, and
-     a scrollbar is the one piece of browser chrome that cannot be made to
-     belong at the bottom of a well. */
+  /* The fade edges below stand in for the bar. See `fadeCoda` in main.ts. */
   scrollbar-width: none;
 }
 
-/* Focusable once it is the whole page, so it can be scrolled without a mouse.
-   Same hairline the places use — it is an edge, not a highlight. */
+/* Keyboard-scrollable once it is the whole page. */
 #log.ended:focus-visible {
   outline: 1px solid rgba(154, 165, 172, 0.45);
   outline-offset: 4px;
@@ -118,9 +130,7 @@ h1 {
   height: 0;
 }
 
-/* The edge the words run off, dissolving. Only ever the edge there is actually
-   more past — set from the scroll position, so the ending never softens its
-   own first or last line. */
+/* Only the edge that actually has more past it, set from the scroll position. */
 #log.ended.more-below {
   mask-image: linear-gradient(to bottom, #000 calc(100% - 4rem), transparent 100%);
 }
@@ -141,77 +151,57 @@ h1 {
 
 #log p {
   margin: 0 0 1.25rem;
-  /* `backwards` matters: a staggered line must hold at the animation's first
-     frame — invisible — through its delay, or the whole batch flashes in at
-     once and the stagger does nothing. */
+  /* `backwards` is required: a delayed line must hold the first keyframe —
+     invisible — through its delay, or the batch flashes in together. */
   animation: surface 0.4s ease-out backwards;
-  /* The words cross the halftone now that nothing is laid over it. A dark
-     halo keeps them readable without painting any of the water out. */
+  /* Keeps the text readable over the halftone without painting it out. */
   text-shadow: 0 1px 4px rgba(10, 9, 8, 0.92), 0 0 12px rgba(10, 9, 8, 0.75);
 }
 
-/* The four registers. See `LineKind` in core/types.ts — the engine decides
-   which one a line is spoken in, and this is the only place it is dressed. */
+/* The registers of `LineKind` (core/types.ts), plus `marker`, which the client
+   writes for itself. The engine picks the register; this is the only place it
+   is dressed. `system` has no rule and falls back to the `#log p` base. */
 
-/* scene — someone is up there. The brightest thing on the page. */
 #log p.scene { color: #efe7da; }
 
-/* fact — the world resolving, stated plainly. Not faded: quieter than a
-   scene, but it is the voice of things happening, so it holds the page. */
 #log p.fact {
   color: var(--ink);
-  border-left: 1px solid var(--edge);
+  /* `--hue` is set only for the four belongings, so the rule's colour says
+     whether one of them is speaking or the well is. */
+  border-left: 1px solid color-mix(in oklab, var(--hue) 70%, var(--edge));
   padding-left: 1rem;
 }
 
-/* The caption over a subject's own line — which of the nine is speaking. Set
-   by the engine, never guessed at here (see `NarrationLine.subject`), and only
-   ever present on a `fact`, so it inherits that register's indent and sits
-   inside the rule rather than beside it. Small and dim: it is a name-plate,
-   and the sentence under it is the line. */
+/* The caption from `NarrationLine.subject`. Only ever on a `fact`, so it
+   inherits that indent and sits inside the rule. */
 #log p[data-subject]::before {
   content: attr(data-subject);
   display: block;
   margin-bottom: 0.2rem;
-  color: var(--dim);
+  color: color-mix(in oklab, var(--hue) 55%, var(--dim));
   font-size: 0.68rem;
   letter-spacing: 0.16em;
   text-transform: lowercase;
 }
 
-/* idle — an empty turn. The only faded one, and the only italic one. */
 #log p.idle {
   color: var(--dim);
   font-style: italic;
 }
 
-/* coda — the ending. The brightest and the slowest thing on the page, and the
-   only text with room around it: nothing follows it, so nothing has to be
-   left space for. */
 #log p.coda {
   color: #f2ece1;
   line-height: 1.7;
   margin-bottom: 1.15rem;
 }
 
-/* No rule above it once the coda stands alone — there is nothing to divide
-   it from any more. */
+/* Divides the coda from the run above it. Not needed once it stands alone. */
 #log:not(.ended) p.coda:first-of-type {
   border-top: 1px solid var(--edge);
   padding-top: 1.5rem;
 }
 
-/* system — the run talking about itself. Set apart by a rule rather than by
-   being shrunk: these are whole sentences and have to stay readable. */
-#log p.system {
-  color: var(--dim);
-  font-style: italic;
-  border-top: 1px solid var(--edge);
-  padding-top: 1rem;
-}
-
-/* marker — an instrument, not a line. Written every time, kept out of sight:
-   it feeds the console-only debug dump rather than the page. */
+/* Written every beat, shown only under `body.dev`. */
 #log p.marker {
   display: none;
   color: #4a463f;
@@ -225,29 +215,25 @@ h1 {
   to { opacity: 1; transform: none; }
 }
 
-/* No ground of its own: the controls float on the water rather than sitting
-   on a panel laid over it. Each one carries its own shadow instead. */
+/* No ground of its own; each control carries its own shadow. */
 footer {
   padding-top: 1.35rem;
 }
 
-/* The run is over: the controls fold away and the words take the shaft. */
 footer.gone {
   display: none;
 }
 
 .actions {
   display: flex;
-  gap: 0.5rem;
+  gap: 0.4rem;
   margin-bottom: 0.6rem;
 }
 
 .actions button { flex: 1; }
 
-/* Everything that is yours, in one row, reserved at full size from the first
-   frame. It never grows, never wraps and never reorders — the only thing that
-   ever changes here is whether a cell is lit. The places are not here; they
-   are in the picture. */
+/* Fixed four-column grid, reserved at full size from the first frame: it never
+   grows, wraps or reorders. */
 #subjects {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
@@ -269,33 +255,32 @@ footer.gone {
   text-overflow: ellipsis;
 }
 
-/* Nothing has a name until you have met it. The box stays exactly the size it
-   will be, so the grid never moves — only the word arrives. */
+/* `visibility` rather than `display`, so the box keeps its final size. */
 .cell:not(.lit) .label { visibility: hidden; }
 
-/* The light a thing calls with: a warm bloom leaning out of one corner, set
-   per cell in `main.ts` so each belonging always calls from its own side. It
-   is an outer glow rather than an overlay, so nothing ever washes the label.
-   `--rest` is the shadow every button already carries.
-
-   Not cell-specific: `be still` calls with the same voice when there is
-   nothing left to push with, because that is the same kind of sentence —
-   *this one is asking for you*. */
+/* `--glow-dx/dy` are set per cell in main.ts; `--rest` is the base shadow every
+   button carries and every glow keyframe composes onto. */
 button {
   --rest: 0 3px 16px rgba(0, 0, 0, 0.6);
   --glow-dx: -8px;
   --glow-dy: -8px;
-  /* So `.hinting`'s wash can anchor to the button and sit behind its face. */
+  /* Anchors `.hinting`'s wash behind the button face. */
   position: relative;
+  font: inherit;
+  font-size: 0.85rem;
+  color: var(--ink);
+  background: var(--wet);
+  border: 1px solid var(--edge);
+  border-radius: 2px;
+  padding: 0.5rem 1.15rem;
+  cursor: pointer;
+  box-shadow: var(--rest);
+  transition: background 0.15s, border-color 0.15s, opacity 0.15s, box-shadow 0.15s, transform 0.15s;
 }
 
-/* Still unexamined: slow, and impossible to miss on the upswing. */
 .calling { animation: calling 4.5s ease-in-out infinite; }
 
-/* The quieter of the two. Not an edge at all — a soft wash gathering behind
-   the button, the same shape and colour as the agitation over the whole
-   screen, because it is the same fact told smaller: the water is not ready.
-   Warm light is a thing asking for you; this cold one is only the room. */
+/* The refusal hint: a wash behind the button, matching the agitation overlay. */
 .hinting::before {
   content: '';
   position: absolute;
@@ -312,17 +297,11 @@ button {
   50% { opacity: 1; }
 }
 
-/* Coming out of the silt: once, fast, and brighter than the call. Declared
-   after `.calling` so it wins for as long as it runs. */
+/* Declared after `.calling` so it wins while it runs. */
 .surfacing { animation: call-in 0.75s ease-out; }
 
-/* A click landing. The button that was pressed says so, and — when a cell
-   turns out to have been a push — the push button says so at the same moment,
-   which is the whole of how that gets taught.
-
-   Only a `from` keyframe: the browser builds the `to` from the element's own
-   styles, so one animation serves a lit cell, an unlit one and a stance
-   button without knowing what any of them look like at rest. */
+/* `from` only: the browser builds the `to` from the element's own styles, so
+   one animation serves a lit cell, an unlit one and an action button. */
 .acted { animation: acted 0.4s ease-out; }
 
 @keyframes acted {
@@ -333,9 +312,7 @@ button {
   }
 }
 
-/* Nothing left to push with. Cold, not warm — this is the water's channel,
-   not a thing calling — and longer than a click so it reads as the answer to
-   what just failed rather than as feedback for the press itself. */
+/* Longer than `.acted`, so it reads as an answer rather than press feedback. */
 .refused { animation: refused 1s ease-out; }
 
 @keyframes refused {
@@ -377,18 +354,10 @@ button {
   }
 }
 
-/* A thing that will not stop pulsing is a thing you cannot look away from, so
-   the endless call goes away — but it is replaced by a state that is just as
-   loud held still, because *this one is asking for you* is information, not
-   decoration, and a reader who turns motion off still needs it.
-
-   The arrival keeps its animation: it is a one-shot tint with no movement in
-   it at all, which is not what reduced motion is protecting against. */
+/* The looping pulses become held states; the one-shot tints answering a click
+   (`.acted`, `.refused`, the corner flash) keep their animations, having no
+   movement in them. The shaft's own motion is excluded — see `visuals.ts`. */
 @media (prefers-reduced-motion: reduce) {
-  /* `.acted`, `.refused` and the corner flash all survive here: they are
-     one-shot tints answering a click the player just made — feedback, not
-     ambience — and there is no movement in any of them. Only the endless
-     pulse goes. */
   .calling {
     animation: none;
     box-shadow: var(--rest), var(--glow-dx) var(--glow-dy) 20px -3px rgba(247, 230, 173, 0.5);
@@ -397,42 +366,20 @@ button {
   }
   .surfacing { animation-duration: 0.45s; }
   .hinting::before { animation: none; opacity: 0.8; }
-
-  /* The shaft is deliberately not in here. Its motion is a pixel of dot swell
-     and signal loops measured in tens of seconds — nothing this setting is
-     protecting against — and silencing it left the picture a still image,
-     which reads as broken rather than as considerate. See `visuals.ts`. */
 }
 
-/* Unmet: legible, but only just. The cell has to be readable — the whole
-   point of reserving all nine is that you can see there are exactly nine and
-   there will never be a tenth — while still being plainly not-yet-yours. */
 .cell:not(.lit) {
   color: #565247;
-  /* Opaque enough to stay legible where the grid crosses the brightest part
-     of the halftone, which is exactly where the bottom row sits. */
+  /* Opaque enough to stay legible over the brightest part of the halftone,
+     which is where the bottom row sits. */
   background: rgba(24, 23, 19, 0.82);
   border-color: #302d27;
   box-shadow: none;
 }
 
-/* Disabled cells keep their own dimming rather than stacking another. */
+/* An unlit cell is already dimmed; do not stack the disabled dimming on it. */
 .cell:not(.lit):disabled { opacity: 1; }
 .cell:disabled { opacity: 0.75; }
-
-button {
-  font: inherit;
-  font-size: 0.85rem;
-  color: var(--ink);
-  background: var(--wet);
-  border: 1px solid var(--edge);
-  border-radius: 2px;
-  padding: 0.5rem 1.15rem;
-  cursor: pointer;
-  /* Lifted off the water rather than cut out of it. */
-  box-shadow: 0 3px 16px rgba(0, 0, 0, 0.6);
-  transition: background 0.15s, border-color 0.15s, opacity 0.15s, box-shadow 0.15s, transform 0.15s;
-}
 
 button:hover:not(:disabled) {
   background: #26241d;
@@ -447,33 +394,29 @@ button:disabled {
   cursor: default;
 }
 
-/* No active state on any of these: a click is one beat, not a mode you are
-   left sitting in. What is currently true of the presence is said in prose. */
+/* No `:active` state anywhere: a click is one beat, not a mode. */
 button.unknown { color: var(--dim); font-style: italic; }
 
-/* Warmth is the border. It only ever runs one way, and a cold one stays cold —
-   the colour is the belonging's whole clock, and it never goes back up. */
-button[data-feel='warm'] { color: var(--warm); border-color: color-mix(in oklab, var(--warm) 55%, var(--edge)); }
-button[data-feel='cooling'] { color: var(--cooling); border-color: color-mix(in oklab, var(--cooling) 45%, var(--edge)); }
-button[data-feel='nearly-cold'] { color: var(--cold); border-color: color-mix(in oklab, var(--cold) 40%, var(--edge)); }
+/* Border carries both facts at once: the hue is which belonging, and how much
+   of it survives the mix is the charge. `data-feel` is `unknown` before the
+   thing is looked at, and no hue is set for that. The label runs its own
+   neutral ramp so the two do not compete on an 80px cell. */
+button[data-feel='warm'] { color: var(--ink); border-color: color-mix(in oklab, var(--hue) 62%, var(--edge)); }
+button[data-feel='cooling'] { color: var(--cooling); border-color: color-mix(in oklab, var(--hue) 42%, var(--edge)); }
+button[data-feel='nearly-cold'] { color: var(--dim); border-color: color-mix(in oklab, var(--hue) 24%, var(--edge)); }
 button[data-feel='cold'] { color: var(--spent); border-color: var(--edge); }
 
-.actions { display: flex; gap: 0.4rem; }
-
-/* The bars are a debug view wearing a costume, so they stay out of the page
-   entirely now — the console-only debug dump replaces them. */
+/* Superseded by the dev readout in `web/dev.ts`. */
 #meters { display: none; }
 
 #meters b { font-weight: normal; color: var(--cold); }
 
 /* ---------------------------------------------------------------------------
-   The two dials. Neither is a bar and neither carries a number: the water is
-   the presence, the coin of sky is everything that was never yours.
+   The shaft.
    --------------------------------------------------------------------------- */
 
-/* One picture, behind everything, running the full width of the viewport —
-   the water is the nearest thing there is and nothing may crop it. Its
-   opacity and brightness are set from `main.ts`; nothing here fixes them. */
+/* Full viewport, behind everything. Opacity and brightness are set from
+   `visuals.ts`; nothing here fixes them. */
 #shaft {
   position: fixed;
   inset: 0;
@@ -481,24 +424,20 @@ button[data-feel='cold'] { color: var(--spent); border-color: var(--edge); }
   pointer-events: none;
 }
 
-/* The coming-into-view is eased here rather than stepped per line, so a beat
-   that writes three lines still reads as one movement of the dark. */
+/* Eased here rather than per line, so a three-line beat is one movement. */
 #shaft .scene {
   width: 100%;
   height: 100%;
   transition: opacity 0.7s ease-out, filter 0.7s ease-out;
 }
 
-/* The ending takes its time going out. The water is the brightest thing on
-   the page and the coda is laid straight over it, so the picture goes down
-   slowly enough to read as the place receding rather than as a light switch. */
+/* The coda is laid straight over the water, so the picture goes down slowly. */
 #shaft.receding .scene {
   transition: opacity 4s ease-in-out, filter 4s ease-in-out;
 }
 
-/* The walls: under the words on purpose, and faint enough that no message
-   type loses contrast crossing them — grey at the ink's own hue, never a
-   colour of its own. */
+/* Grey at the ink's own hue, faint enough that no register loses contrast
+   crossing it. */
 #shaft .walls line,
 #shaft .walls path {
   stroke: #cfc8bd;
@@ -507,28 +446,22 @@ button[data-feel='cold'] { color: var(--spent); border-color: var(--edge); }
   fill: none;
 }
 
-/* Dry stone, above the waterline. The only large surface the words sit on,
-   and now the only one with nothing drawn over it, so it can carry a little
-   more weight than the old single-opacity walls did. */
+/* Above the waterline: the surface the words sit on. */
 #shaft .walls .dry { opacity: 0.22; }
 
-/* The same stone, going down into the water. Dimmer because it is behind the
-   grain, not because it is further away. */
+/* Below it, behind the grain. */
 #shaft .walls .drowned { opacity: 0.09; }
 
-/* Halftone: the dots are the light, the ground is the shaft. Brightest just
-   under the surface, where the light gets in, and dying toward the floor. */
+/* The dots are the light and the ground is the shaft, brightest just under the
+   surface. */
 #shaft .water { color: #8f9aa1; }
 
 #shaft .water .grain { transition: color 0.45s ease-out; }
 
-/* Something is being done to it, right now, this beat. */
+/* This beat was a push. */
 #shaft .scene.pressing .water .grain { color: #cdd6db; }
 
-/* The waterline, seen from underneath. Its shape is the charge: a clean
-   ellipse is glass, and it will not hold still once anything has been spent.
-   It sits directly under the last line of text, which is what makes it the
-   most legible reading of the charge in the picture. */
+/* Its shape is the charge, set per tick by `breakSurface`. */
 #shaft .water .waterline {
   stroke: #b9c6cc;
   stroke-width: 1;
@@ -536,22 +469,17 @@ button[data-feel='cold'] { color: var(--spent); border-color: var(--edge); }
   opacity: 0.5;
 }
 
-/* The floor. Dark, but no longer an edge: the fill fades out at the top, and
-   the coarse stuff scatters up into the water, so the two grains meet in a
-   band. A drawn rim is what made this read as a shape laid on the picture. */
+/* The fill fades out at the top and the grain scatters up into the water, so
+   the two meet in a band rather than on a drawn edge. */
 #shaft .silt .silt-grain {
   color: #4a4235;
   opacity: 0.62;
   transition: color 0.6s ease-out, opacity 0.6s ease-out;
 }
 
-/* No bloom. The light stops at the stone — a drop-shadow here spills the glow
-   onto the wall, which is the one thing the hole is not allowed to do. */
-
-/* The lip of the opening, where the stonework ends. The coin is drawn on this
-   same ellipse and its light is gone well before the edge, so this is the only
-   thing that says how wide the hole actually is — and it has to stay under the
-   walls converging into it, not draw a ring around them. */
+/* The lip of the opening. The coin is drawn on this same ellipse and its light
+   is gone before the edge, so this is what gives the hole its width. It stays
+   under the walls converging into it. */
 #shaft .sky .rim {
   stroke: #cfc8bd;
   stroke-width: 1;
@@ -560,15 +488,11 @@ button[data-feel='cold'] { color: var(--spent); border-color: var(--edge); }
 }
 
 /* ---------------------------------------------------------------------------
-   The places. Each is a region of the picture and a tap target over it. A
-   place with something to say moves; that is the whole of the announcement,
-   and there is no text on any of it.
+   The places: a region of the picture and a tap target over it. A place with
+   something to say animates; there is no text on any of them.
    --------------------------------------------------------------------------- */
 
-/* The shapes come up one at a time, each on the beat its own line is read, so
-   the room assembles itself while it is being described. A second is long
-   enough to read as something arriving and short enough to still belong to the
-   sentence that brought it. */
+/* Each comes up on the beat its own line is read, via `resolve`. */
 #shaft .place-shape {
   opacity: 0;
   transition: opacity 1s ease-out;
@@ -576,8 +500,7 @@ button[data-feel='cold'] { color: var(--spent); border-color: var(--edge); }
 
 #shaft .place-shape.resolved { opacity: 1; }
 
-/* Full width, so a target is never a thin strip, and stacked in the order they
-   run down the picture. Transparent: what the player sees is the shape. */
+/* Full-width bands so a target is never a thin strip. */
 #shaft .places {
   position: absolute;
   inset: 0;
@@ -602,15 +525,14 @@ button[data-feel='cold'] { color: var(--spent); border-color: var(--edge); }
   transform: none;
 }
 
-/* Nothing is drawn for focus by default down here, but a keyboard has to be
-   able to find the places, so it gets the one visible edge in the picture. */
+/* The one visible edge in the picture, so a keyboard can find the places. */
 #shaft .places .place:focus-visible {
   outline: 1px solid rgba(154, 165, 172, 0.45);
   outline-offset: -3px;
 }
 
-/* sky — it comes down the shaft and goes back up. Perspective, not brightness:
-   the one thing that is out of reach pretending, briefly, that it is not. */
+/* sky — scaled about its own centre, so it stays inside the hole. Origin is
+   set from `visuals.ts`, where the rim's centre is known. */
 #shaft .sky.signalling {
   transform-origin: var(--sky-origin, 50% 12%);
   animation: sky-nearer 9s ease-in-out infinite;
@@ -621,9 +543,7 @@ button[data-feel='cold'] { color: var(--spent); border-color: var(--edge); }
   45% { transform: scale(1.5); }
 }
 
-/* walls — a light wanders over the stone, slow enough that you are not sure it
-   moved until you see it move again. Hidden entirely until they have
-   something: the walls are not lit from anywhere. */
+/* walls — hidden until they have something: there is no other light on them. */
 #shaft .wall-light {
   opacity: 0;
   transition: opacity 2s ease-out;
@@ -640,10 +560,9 @@ button[data-feel='cold'] { color: var(--spent); border-color: var(--edge); }
   70% { transform: translate(26%, 10%); }
 }
 
-/* water — it already moves, so it does not move differently. A glow gathers
-   *under* the surface, in the body of the water, and the grain warms with it.
-   Two channels because one was invisible: the root brightness filter eats a
-   colour shift on its own. */
+/* water — already moves, so it signals with a glow under the surface plus a
+   warming of the grain. Two channels: the root brightness filter eats a colour
+   shift on its own. */
 #shaft .water .gathering {
   opacity: 0;
   transform-origin: 50% 50%;
@@ -662,9 +581,8 @@ button[data-feel='cold'] { color: var(--spent); border-color: var(--edge); }
   50% { color: #bcd6c4; }
 }
 
-/* silt — slow, and continuous with the halftone, so it reads as part of the
-   same picture rather than as a thing that lit up. It has to warm as well as
-   brighten: near-black going slightly less near-black is not a signal. */
+/* silt — warms as well as brightens: near-black going less near-black does not
+   register on its own. */
 #shaft .silt.signalling .silt-grain { animation: silt-stirring 11s ease-in-out infinite; }
 
 @keyframes silt-stirring {
@@ -672,11 +590,8 @@ button[data-feel='cold'] { color: var(--spent); border-color: var(--edge); }
   50% { color: #8a7654; opacity: 1; }
 }
 
-/* The corners reading the charge: the room closing in as the presence thins,
-   clear again only when stillness has bought it back. It is also the only
-   thing that lands on the very first press, while the shaft itself is still
-   too dark to read. The transition is what makes it a level and not a flicker
-   — every step of charge glides rather than cutting. */
+/* Reads the charge as a level. Opacity is set inline from `visuals.ts`; the
+   transition here is what keeps a step of charge from cutting. */
 #shaft .agitation {
   position: absolute;
   inset: 0;
@@ -686,8 +601,7 @@ button[data-feel='cold'] { color: var(--spent); border-color: var(--edge); }
     radial-gradient(ellipse 78% 62% at 50% 55%, transparent 45%, rgba(154, 165, 172, 0.16) 100%);
 }
 
-/* The whole room flinching, for as long as it takes to notice. Overrides the
-   inline opacity `main.ts` sets, because animations outrank inline styles. */
+/* Overrides the inline opacity, since animations outrank inline styles. */
 #shaft .agitation.flash { animation: agitation-flash 1s ease-out; }
 
 @keyframes agitation-flash {
@@ -695,9 +609,8 @@ button[data-feel='cold'] { color: var(--spent); border-color: var(--edge); }
   35% { opacity: 0.8; filter: brightness(1.7); }
 }
 
-/* On a phone there is less water in view and less screen for the glow to
-   gather in, so both readings of the charge get thinner exactly where they
-   are needed most. Tighten the clear centre and lift the edges. */
+/* Less water in view on a phone, so tighten the clear centre and lift the
+   edges to keep the reading at the same strength. */
 @media (max-width: 640px) {
   #shaft .agitation {
     background:
@@ -707,82 +620,28 @@ button[data-feel='cold'] { color: var(--spent); border-color: var(--edge); }
 
 #shaft .figure {
   fill: #0a0908;
+  /* Slower than the water and than a click, so it reads as a person rather
+     than as the interface answering. Origin is set from `visuals.ts`. */
   opacity: 0;
-  transition: opacity 0.5s ease-out;
+  transition: opacity 0.5s ease-out, transform 0.75s ease-out, fill 0.9s ease-out;
 }
 
-/* Somebody at the rim. Never a face, and it never quite covers the light. */
+/* The head leans on its own clock, a little behind the body. */
+#shaft .figure ellipse { transition: transform 0.85s ease-out; }
+
 #shaft .figure.there { opacity: 0.82; }
 
-/* ---------------------------------------------------------------------------
-   The debug harness (`shaft.html`). Dev only, and deliberately plain: it is
-   an instrument panel and it should not look like anything in the game.
-   --------------------------------------------------------------------------- */
+/* A belonging reaching them. The hue is mixed into the near-black rather than
+   replacing it, so it tints without lighting up. */
+#shaft .figure[data-subject-id] { fill: color-mix(in oklab, var(--hue) 22%, #0a0908); }
 
-body.shaft-debug #controls {
-  position: fixed;
-  inset: 0.75rem 0.75rem auto auto;
-  z-index: 2;
-  width: 15rem;
-  max-height: calc(100vh - 1.5rem);
-  overflow: auto;
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-  background: rgba(13, 12, 10, 0.92);
-  border: 1px solid var(--edge);
-  padding: 0.7rem;
-  font: 11px/1.5 ui-monospace, monospace;
-  color: var(--dim);
-}
+/* Arrives and leaves inside one beat. Outranks the inline transform while it
+   runs and hands it back after. */
+#shaft .figure.withdrawing { animation: half-arrival 2.6s ease-out; }
 
-/* `hidden` is a UA rule at the lowest specificity, and the block above beats
-   it. Say it again where it can win, or the toggle does nothing. */
-body.shaft-debug #controls[hidden] { display: none; }
-
-body.shaft-debug fieldset {
-  border: 1px solid var(--edge);
-  padding: 0.5rem;
-  margin: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 0.3rem;
-}
-
-body.shaft-debug legend { letter-spacing: 0.15em; }
-
-body.shaft-debug label {
-  display: flex;
-  align-items: center;
-  gap: 0.4rem;
-}
-
-body.shaft-debug label span { flex: 0 0 4.5rem; }
-body.shaft-debug label input[type='range'] { flex: 1; min-width: 0; }
-body.shaft-debug label b { flex: 0 0 2.2rem; font-weight: normal; color: var(--cold); }
-body.shaft-debug label input[type='checkbox'] { flex: 0 0 auto; }
-body.shaft-debug label input[type='number'] { width: 4rem; }
-
-body.shaft-debug #controls button {
-  font: inherit;
-  padding: 0.25rem 0.5rem;
-  box-shadow: none;
-}
-
-body.shaft-debug .note { margin: 0; color: var(--cold); }
-
-/* Always over the picture: the panel folds away, this does not. */
-body.shaft-debug #toolbar {
-  position: fixed;
-  inset: 0.75rem auto auto 0.75rem;
-  z-index: 3;
-  display: flex;
-  gap: 0.3rem;
-}
-
-body.shaft-debug #toolbar button {
-  font: 11px/1.5 ui-monospace, monospace;
-  padding: 0.3rem 0.6rem;
-  background: rgba(13, 12, 10, 0.92);
-  box-shadow: none;
+@keyframes half-arrival {
+  0% { opacity: 0; transform: scale(0.9); }
+  20% { opacity: 0.58; transform: none; }
+  55% { opacity: 0.5; transform: none; }
+  100% { opacity: 0; transform: scale(0.84); }
 }

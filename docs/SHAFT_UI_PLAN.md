@@ -59,9 +59,26 @@ Past the rise budget the surface crosses the eye and the camera is under water.
 That state draws over the reading band for its duration, and is the one sanctioned
 exception to whatever §Open settles.
 
-Consequences: `bands` is state-dependent as well as pose-dependent, the water
-grain needs headroom generated above the resting surface, and a standing rise
-needs a cap or it takes the reading band permanently rather than temporarily.
+Consequences: `bands` is state-dependent as well as pose-dependent, and a
+standing rise needs a cap or it takes the reading band permanently rather than
+temporarily.
+
+**How a rise draws is two candidates, and both get built before either is
+kept.** *Flooded grain:* the water is one substance everywhere, so the rise
+carries the halftone up the shaft. It costs grain generated above the resting
+surface, and at the top of a rise it is a field of specks across the whole
+opening — which is the doubt: cost, and whether that reads as water or as
+noise. *A rising wash:* the risen band is one semi-transparent fill under the
+waterline, blue deepening toward dark as the level climbs, so depth is carried
+by colour rather than by more specks. It is cheaper, it needs no headroom, and
+past the eye it is already the under-water state at full extent. The doubt
+there is whether it reads as water rather than as a filter laid over the
+picture.
+
+Either way the resting surface is unchanged: the grain, the lucidity steps and
+the wave all stay as they are. What is in question is only what the rise adds
+on top of them, and it is a question the built thing answers rather than the
+plan.
 
 ### Lucidity
 
@@ -271,6 +288,8 @@ world-space, switchable and then decided. Waves displace the ring's world `y`
 before projecting rather than bending a screen-space path. Then the level: the
 rise on a push, the modifier growing with turns, the cap, and the crossing past
 the eye. `Well` stops being a module constant and becomes a per-frame value.
+The rise draws both ways — flooded grain and a rising wash — behind a switch
+like the one §Motion uses, and the pair is looked at before either is kept.
 
 **Unplaced.** The reading-band probe, which is independent of all of the above
 and is still the one result that can invalidate the projection. Deriving `bands`

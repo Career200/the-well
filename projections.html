@@ -1,0 +1,545 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>THE WELL — projections</title>
+    <style>
+      :root {
+        --edge: #333029;
+        --dim: #8b8578;
+      }
+      body {
+        margin: 0;
+        padding: 16px;
+        background: #14130f;
+        color: #d8d2c4;
+        font: 12px/1.5 ui-monospace, monospace;
+      }
+      h1 {
+        font: inherit;
+        letter-spacing: 0.2em;
+        text-transform: uppercase;
+        color: var(--dim);
+        margin: 0 0 12px;
+      }
+      .controls {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 14px;
+        border: 1px solid var(--edge);
+        padding: 10px;
+        margin-bottom: 8px;
+      }
+      .controls > h2 {
+        font: inherit;
+        letter-spacing: 0.15em;
+        text-transform: uppercase;
+        color: var(--dim);
+        margin: 0;
+        width: 4.5rem;
+      }
+      .control {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+      .control > span {
+        color: var(--dim);
+      }
+      .control > b {
+        font-weight: normal;
+        color: #9fc4ae;
+        width: 3.4rem;
+      }
+      .control > button {
+        font: inherit;
+        color: var(--dim);
+        background: none;
+        border: 1px solid var(--edge);
+        cursor: pointer;
+        padding: 0 5px;
+      }
+      .control > button:hover {
+        color: #efe7da;
+      }
+      #implied {
+        color: var(--dim);
+        margin: 8px 0 14px;
+      }
+      #implied b {
+        font-weight: normal;
+        color: #9fc4ae;
+      }
+      .legend {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 14px;
+        color: var(--dim);
+        margin-bottom: 14px;
+      }
+      .legend i {
+        font-style: normal;
+        border-bottom: 2px solid currentColor;
+        padding: 0 10px 1px 0;
+        margin-right: 4px;
+      }
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+        gap: 14px;
+      }
+      figure {
+        margin: 0;
+      }
+      canvas {
+        display: block;
+        width: 100%;
+        aspect-ratio: 3 / 4;
+        background: #000;
+        border: 1px solid var(--edge);
+      }
+      figcaption {
+        padding-top: 6px;
+      }
+      figcaption b {
+        display: block;
+        font-weight: normal;
+        color: #efe7da;
+      }
+      figcaption span {
+        color: var(--dim);
+      }
+    </style>
+  </head>
+  <body>
+    <!-- Dev only, like shaft.html: `vite` serves any HTML at its path, and
+         `vite build` takes the root index.html alone. -->
+    <h1>The shaft, six ways</h1>
+
+    <div class="controls" id="camera-controls"><h2>camera</h2></div>
+    <div class="controls" id="well-controls"><h2>the well</h2></div>
+
+    <p id="implied"></p>
+
+    <div class="legend">
+      <span><i style="color: #e8d79a"></i>rim / sky hole</span>
+      <span><i style="color: #7fc4a8"></i>waterline</span>
+      <span><i style="color: #b08d5a"></i>silt</span>
+      <span><i style="color: #6c6558"></i>walls</span>
+      <span><i style="color: #c05f5f"></i>eye level</span>
+    </div>
+
+    <div class="grid" id="grid"></div>
+
+    <script>
+      // y is up, the silt is y = 0, and the camera has its back to the -z wall
+      // looking toward +z. The well's shape is a control; what panel 1 implies
+      // about it is printed under the sliders and is what each reset restores.
+      const JOINTS = 16;
+      const COURSE_FRACTIONS = [0.14, 0.28, 0.44, 0.62, 0.82];
+
+      const COLOR = {
+        rim: "#e8d79a",
+        water: "#7fc4a8",
+        silt: "#b08d5a",
+        wall: "#6c6558",
+        eye: "#c05f5f",
+      };
+
+      // ---- the construction in visuals.ts, ported -------------------------
+
+      /** `shaftAt` and the angle search, on one frame size. */
+      function currentSections(W, H) {
+        const k = 0.28;
+        const rimRx = Math.min(W * 0.22, 150);
+        const rimCy = Math.min(H * 0.1, 84);
+        const siltRyRef = Math.min(H * 0.22, 198);
+        const siltTop = H * 1.04 - siltRyRef;
+        const waterTop = siltTop - Math.min(130, H * 0.17);
+
+        const shaftAt = (deg) => {
+          const a = Math.tan((deg * Math.PI) / 180);
+          const vy = rimCy - rimRx / a;
+          const centreFor = (top) => (top - k * a * vy) / (1 - k * a);
+          const section = (top) => {
+            const cy = centreFor(top);
+            const rx = a * (cy - vy);
+            return { cy, rx, ry: k * rx };
+          };
+          return { a, vy, silt: section(siltTop), surf: section(waterTop) };
+        };
+
+        let lo = 22;
+        let hi = 40;
+        for (let i = 0; i < 18; i++) {
+          const mid = (lo + hi) / 2;
+          if (shaftAt(mid).surf.rx >= W / 2) hi = mid;
+          else lo = mid;
+        }
+        const solved = shaftAt(hi);
+        return {
+          ...solved,
+          angle: hi,
+          cx: W / 2,
+          k,
+          rim: { cy: rimCy, rx: rimRx, ry: rimRx * k },
+          sectionAt: (cy) => ({ cy, rx: solved.a * (cy - solved.vy), ry: k * solved.a * (cy - solved.vy) }),
+        };
+      }
+
+      /**
+       * What panel 1 says about the well it is a picture of. Its sections are
+       * homothetic, so the planes are parallel to the image plane, so the view
+       * is straight up the axis and a section's radius is inversely
+       * proportional to its distance from the eye. Three radii therefore fix
+       * two ratios — where the water sits and how far under the floor the eye
+       * is, both as fractions of the shaft's height. Diameter is not among
+       * them: it trades against the field of view.
+       */
+      function impliedRatios(W, H) {
+        const s = currentSections(W, H);
+        const distance = (rx) => s.silt.rx / rx;
+        const water = distance(s.surf.rx) - 1;
+        const rim = distance(s.rim.rx) - 1;
+        return { water: water / rim, eye: 1 / rim, angle: s.angle };
+      }
+
+      function drawCurrent(ctx, W, H) {
+        const s = currentSections(W, H);
+
+        /** The far arc of a section, π to 2π. Only the far half is ever drawn. */
+        const arc = (sec, color, width, alpha = 1) => {
+          ctx.beginPath();
+          for (let i = 0; i <= 64; i++) {
+            const t = Math.PI + (i / 64) * Math.PI;
+            const x = s.cx + sec.rx * Math.cos(t);
+            const y = sec.cy + sec.ry * Math.sin(t);
+            i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+          }
+          ctx.globalAlpha = alpha;
+          ctx.strokeStyle = color;
+          ctx.lineWidth = width;
+          ctx.stroke();
+          ctx.globalAlpha = 1;
+        };
+
+        ctx.strokeStyle = COLOR.wall;
+        ctx.lineWidth = 1;
+        for (let i = 0; i < 9; i++) {
+          const t = Math.PI + (i / 8) * Math.PI;
+          ctx.beginPath();
+          ctx.moveTo(s.cx + s.rim.rx * Math.cos(t), s.rim.cy + s.rim.ry * Math.sin(t));
+          ctx.lineTo(s.cx + s.silt.rx * Math.cos(t), s.silt.cy + s.silt.ry * Math.sin(t));
+          ctx.stroke();
+        }
+        for (let i = 1; i <= 6; i++) {
+          const cy = s.rim.cy + Math.pow(i / 6, 1.7) * (s.silt.cy - s.rim.cy);
+          arc(s.sectionAt(cy), COLOR.wall, 1, 0.55);
+        }
+        arc(s.silt, COLOR.silt, 2);
+        arc(s.surf, COLOR.water, 2);
+        ctx.beginPath();
+        ctx.ellipse(s.cx, s.rim.cy, s.rim.rx, s.rim.ry, 0, 0, Math.PI * 2);
+        ctx.fillStyle = "rgba(232, 215, 154, 0.1)";
+        ctx.fill();
+        ctx.strokeStyle = COLOR.rim;
+        ctx.lineWidth = 2.5;
+        ctx.stroke();
+      }
+
+      // ---- the well, as geometry ------------------------------------------
+
+      const ring = (y, radius, n = 128) => {
+        const pts = [];
+        for (let i = 0; i <= n; i++) {
+          const t = (i / n) * Math.PI * 2;
+          pts.push({ x: Math.cos(t) * radius, y, z: Math.sin(t) * radius });
+        }
+        return pts;
+      };
+
+      /** Subdivided, so the curvilinear models can bend a straight line. */
+      const joint = (t, well, n = 48) => {
+        const x = Math.cos(t) * well.radius;
+        const z = Math.sin(t) * well.radius;
+        const pts = [];
+        for (let i = 0; i <= n; i++) pts.push({ x, y: (i / n) * well.rimY, z });
+        return pts;
+      };
+
+      const spoke = (t, well, n = 16) => {
+        const pts = [];
+        for (let i = 0; i <= n; i++) {
+          const r = (i / n) * well.radius;
+          pts.push({ x: Math.cos(t) * r, y: 0, z: Math.sin(t) * r });
+        }
+        return pts;
+      };
+
+      function features(well, eye) {
+        const out = [];
+        for (let i = 0; i < JOINTS; i++) {
+          out.push({ pts: joint((i / JOINTS) * Math.PI * 2, well), color: COLOR.wall, width: 1 });
+        }
+        for (const f of COURSE_FRACTIONS) {
+          out.push({ pts: ring(f * well.rimY, well.radius), color: COLOR.wall, width: 1, alpha: 0.55 });
+        }
+        for (let i = 0; i < 8; i++) {
+          out.push({ pts: spoke((i / 8) * Math.PI * 2, well), color: COLOR.silt, width: 1, alpha: 0.5 });
+        }
+        out.push({ pts: ring(0, well.radius), color: COLOR.silt, width: 2 });
+        out.push({ pts: ring(well.waterY, well.radius), color: COLOR.water, width: 2 });
+        out.push({
+          pts: ring(well.rimY, well.radius),
+          color: COLOR.rim,
+          width: 2.5,
+          fill: "rgba(232, 215, 154, 0.1)",
+        });
+        out.push({ pts: ring(eye, well.radius), color: COLOR.eye, width: 1, dash: [4, 4] });
+        return out;
+      }
+
+      // ---- cameras ---------------------------------------------------------
+
+      /** World point into camera space: forward +z, up +y, pitched about x. */
+      function camSpace(p, cam, pitch) {
+        const dx = p.x - cam.x;
+        const dy = p.y - cam.y;
+        const dz = p.z - cam.z;
+        const c = Math.cos(pitch);
+        const s = Math.sin(pitch);
+        return { x: dx, y: dy * c - dz * s, z: dy * s + dz * c };
+      }
+
+      /**
+       * Camera space to pixels, or null for a point the model cannot show.
+       * `squash` scales the result vertically about the centre: an anamorphic
+       * stretch of the image, not part of any projection.
+       */
+      const MODELS = {
+        pinhole(v, W, H, o) {
+          if (v.z <= 0.02) return null;
+          const f = H / 2 / Math.tan(o.halfFov);
+          return { x: W / 2 + (f * v.x) / v.z, y: H / 2 - ((f * v.y) / v.z) * o.squash };
+        },
+        cylindrical(v, W, H, o) {
+          const r = Math.hypot(v.x, v.z);
+          if (r < 0.001) return null;
+          const theta = Math.atan2(v.x, v.z);
+          const fy = H / 2 / Math.tan(o.halfFov);
+          const fx = W / 2 / Math.min(Math.PI * 0.98, o.halfFov * (W / H));
+          return { x: W / 2 + fx * theta, y: H / 2 - fy * (v.y / r) * o.squash, theta };
+        },
+        fisheye(v, W, H, o) {
+          const a = Math.atan2(Math.hypot(v.x, v.y), v.z);
+          if (a > 2.9) return null;
+          const phi = Math.atan2(v.y, v.x);
+          const f = H / 2 / o.halfFov;
+          return { x: W / 2 + f * a * Math.cos(phi), y: H / 2 - f * a * Math.sin(phi) * o.squash };
+        },
+      };
+
+      // ---- panels ----------------------------------------------------------
+
+      const PANELS = [
+        {
+          title: "1 · as built",
+          note: "visuals.ts today. Homothetic sections, aspect 0.28, far half only, no near wall. Ignores every slider.",
+          bespoke: drawCurrent,
+        },
+        {
+          title: "2 · the same, as a camera",
+          note: "Pinhole at pitch 90°, squashed, water and eye at the implied ratios. Reads 1 back as a view.",
+          model: "pinhole",
+          pitch: () => Math.PI / 2,
+          well: (well, ratios) => ({ ...well, waterY: ratios.water * well.rimY }),
+          eye: (well, ratios) => -ratios.eye * well.rimY,
+        },
+        {
+          title: "3 · pinhole, pitched",
+          note: "A camera on the silt, back to the wall, looking up. No squash.",
+          model: "pinhole",
+          squash: () => 1,
+        },
+        {
+          title: "4 · pinhole + squash",
+          note: "3 with the squash kept: a real tilt wearing the flat look. The cheapest change.",
+          model: "pinhole",
+        },
+        {
+          title: "5 · cylindrical",
+          note: "Angle-linear across, rectilinear up. Verticals stay straight, the wall wraps.",
+          model: "cylindrical",
+          squash: () => 1,
+        },
+        {
+          title: "6 · fisheye",
+          note: "Equidistant. Lines bow, and the periphery compresses instead of stretching.",
+          model: "fisheye",
+          squash: () => 1,
+        },
+      ];
+
+      const grid = document.getElementById("grid");
+      for (const panel of PANELS) {
+        const figure = document.createElement("figure");
+        const canvas = document.createElement("canvas");
+        const caption = document.createElement("figcaption");
+        const name = document.createElement("b");
+        const note = document.createElement("span");
+        name.textContent = panel.title;
+        note.textContent = panel.note;
+        caption.append(name, note);
+        figure.append(canvas, caption);
+        grid.append(figure);
+        panel.canvas = canvas;
+      }
+
+      // ---- controls --------------------------------------------------------
+      // `fallback` is what the reset arrow restores. The well's two ratios come
+      // from panel 1 and are re-read at reset, so they follow the frame size;
+      // everything else is a fixed starting point.
+
+      let ratios = impliedRatios(PANELS[0].canvas.clientWidth, PANELS[0].canvas.clientHeight);
+
+      const CONTROLS = [
+        { key: "eye", group: "camera", label: "eye above silt", min: -2, max: 4, step: 0.05, fallback: () => 0.4 },
+        { key: "wall", group: "camera", label: "back to wall", min: 0, max: 1, step: 0.01, fallback: () => 0.8 },
+        { key: "pitch", group: "camera", label: "pitch", min: 0, max: 90, step: 1, fallback: () => 26, unit: "°" },
+        { key: "fov", group: "camera", label: "fov (vertical)", min: 30, max: 170, step: 1, fallback: () => 105, unit: "°" },
+        { key: "squash", group: "camera", label: "squash", min: 0.1, max: 1, step: 0.01, fallback: () => 0.28 },
+        { key: "diameter", group: "well", label: "diameter", min: 0.5, max: 24, step: 0.1, fallback: () => 6 },
+        { key: "height", group: "well", label: "height", min: 1, max: 60, step: 0.5, fallback: () => 10 },
+        {
+          key: "water",
+          group: "well",
+          label: "water (of height)",
+          min: 0,
+          max: 1,
+          step: 0.005,
+          fallback: () => ratios.water,
+        },
+      ];
+
+      const inputs = {};
+      const outputs = {};
+      for (const control of CONTROLS) {
+        const row = document.createElement("div");
+        row.className = "control";
+        const name = document.createElement("span");
+        name.textContent = control.label;
+        const input = document.createElement("input");
+        input.type = "range";
+        input.min = String(control.min);
+        input.max = String(control.max);
+        input.step = String(control.step);
+        input.value = String(control.fallback());
+        const value = document.createElement("b");
+        const reset = document.createElement("button");
+        reset.type = "button";
+        reset.textContent = "↺";
+        reset.title = "back to default";
+        reset.onclick = () => {
+          input.value = String(control.fallback());
+          draw();
+        };
+        input.oninput = draw;
+        row.append(name, input, value, reset);
+        document.getElementById(`${control.group}-controls`).append(row);
+        inputs[control.key] = input;
+        outputs[control.key] = value;
+        control.output = value;
+      }
+
+      const implied = document.getElementById("implied");
+
+      /** One polyline, broken wherever the model drops a point. */
+      function stroke(ctx, feature, project) {
+        const pts = feature.pts.map(project);
+        ctx.strokeStyle = feature.color;
+        ctx.lineWidth = feature.width;
+        ctx.globalAlpha = feature.alpha ?? 1;
+        ctx.setLineDash(feature.dash ?? []);
+
+        let open = false;
+        let previous = null;
+        ctx.beginPath();
+        for (const p of pts) {
+          // A cylindrical seam crossing shows up as a jump of nearly a full turn.
+          const wrapped =
+            p && previous && p.theta !== undefined && Math.abs(p.theta - previous.theta) > Math.PI;
+          if (!p || wrapped) open = false;
+          else if (!open) {
+            ctx.moveTo(p.x, p.y);
+            open = true;
+          } else ctx.lineTo(p.x, p.y);
+          previous = p;
+        }
+        if (feature.fill && pts.every(Boolean)) {
+          ctx.fillStyle = feature.fill;
+          ctx.fill();
+        }
+        ctx.stroke();
+        ctx.globalAlpha = 1;
+        ctx.setLineDash([]);
+      }
+
+      function draw() {
+        const read = {};
+        for (const control of CONTROLS) {
+          read[control.key] = Number(inputs[control.key].value);
+          control.output.textContent = control.unit
+            ? `${read[control.key]}${control.unit}`
+            : read[control.key].toFixed(2);
+        }
+
+        const pitch = (read.pitch * Math.PI) / 180;
+        const halfFov = (read.fov * Math.PI) / 360;
+        const first = PANELS[0].canvas;
+        ratios = impliedRatios(first.clientWidth, first.clientHeight);
+
+        const well = {
+          radius: read.diameter / 2,
+          rimY: read.height,
+          waterY: read.water * read.height,
+        };
+        outputs.water.textContent = `${(read.water * 100).toFixed(0)}%`;
+
+        implied.innerHTML =
+          `panel 1 implies, as fractions of the shaft's height: water at <b>${(ratios.water * 100).toFixed(1)}%</b>, ` +
+          `eye <b>${(ratios.eye * 100).toFixed(0)}%</b> below the floor. Its wall angle solves to ` +
+          `<b>${ratios.angle.toFixed(1)}°</b>. Diameter is not implied — it trades against the field of view.`;
+
+        for (const panel of PANELS) {
+          const canvas = panel.canvas;
+          const dpr = window.devicePixelRatio || 1;
+          const W = canvas.clientWidth;
+          const H = canvas.clientHeight;
+          canvas.width = W * dpr;
+          canvas.height = H * dpr;
+          const ctx = canvas.getContext("2d");
+          ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+          ctx.clearRect(0, 0, W, H);
+          ctx.lineJoin = "round";
+
+          if (panel.bespoke) {
+            panel.bespoke(ctx, W, H);
+            continue;
+          }
+          const own = panel.well ? panel.well(well, ratios) : well;
+          const eye = panel.eye ? panel.eye(own, ratios) : read.eye;
+          const cam = { x: 0, y: eye, z: -(own.radius - 0.25) * read.wall };
+          const options = { halfFov, squash: panel.squash ? panel.squash() : read.squash };
+          const model = MODELS[panel.model];
+          const project = (p) => model(camSpace(p, cam, panel.pitch ? panel.pitch() : pitch), W, H, options);
+          for (const feature of features(own, eye)) stroke(ctx, feature, project);
+        }
+      }
+
+      window.addEventListener("resize", draw);
+      draw();
+    </script>
+  </body>
+</html>

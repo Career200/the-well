@@ -29,7 +29,6 @@ import type {
   WorldState
 } from "./types.js";
 
-/** Four verbs and one glance. Each is paid for on the beat it is taken. */
 export type PlayerAction =
   | { kind: "wait" }
   | { kind: "still" }
@@ -37,10 +36,10 @@ export type PlayerAction =
   | { kind: "attune"; object: ObjectId }
   | { kind: "look"; object: ObjectId };
 
-/** Set by the first press that lands. Read by the presentation, not the sim. */
+/** Read by the presentation, not sim. */
 export const HAS_PRESSED = "presence.has-pressed";
 
-/** Set by the first refusal, so the line stating the rule is said once. */
+/** Set by the first push refusal, so the line stating the rule is said once. */
 const HAS_BEEN_REFUSED = "presence.has-been-refused";
 
 /** A press that found nothing; the next one cannot. */
@@ -285,8 +284,7 @@ function maybeStartScene(
 }
 
 /**
- * Whoever came is missed, at the cost of one discovery. Writes no history, so
- * the scene can come again. `undefined` if the pack has no prose for it.
+ * If called inside a scene, `resolveScene` runs, but lines are cut. `undefined` if the pack has no prose for it.
  */
 function hideUnderTheCoat(
   game: Game
@@ -549,19 +547,28 @@ export function step(game: Game, action: PlayerAction): StepResult {
 
   // 3. Only then does the world get its turn.
   let result: StepResult;
-  // Coat mid-scene drops the scene: no outcome, no history, can come again.
-  // `unhidable` scenes opt out and play on.
-  const hidFrom =
+  // Coat mid-scene resolves the scene where it stands: the outcome is taken and
+  // spent, and only its line is withheld. `unhidable` scenes opt out and play
+  // their remaining beats, where the coat is a resonance like any other.
+  const hiding =
     next.mode.kind === "scene" &&
     used === "coat" &&
-    !sceneById(next, next.mode.scene)?.unhidable
-      ? hideUnderTheCoat(next)
-      : undefined;
-  if (hidFrom) {
-    result = {
-      game: { ...hidFrom.game, mode: { kind: "idle" } },
-      lines: [...lines, ...hidFrom.lines]
-    };
+    !sceneById(next, next.mode.scene)?.unhidable;
+  const hidFrom = hiding ? hideUnderTheCoat(next) : undefined;
+  if (hidFrom && next.mode.kind === "scene") {
+    const playing = sceneById(next, next.mode.scene);
+    result = playing
+      ? resolveScene(
+          hidFrom.game,
+          playing,
+          next.mode.ctx,
+          [...lines, ...hidFrom.lines],
+          true
+        )
+      : {
+          game: { ...hidFrom.game, mode: { kind: "idle" } },
+          lines: [...lines, ...hidFrom.lines]
+        };
   } else if (next.mode.kind === "scene") {
     result = advanceScene(next, lines);
   } else if (next.mode.kind === "below") {
@@ -911,8 +918,24 @@ function advanceScene(game: Game, lines: NarrationLine[]): StepResult {
     };
   }
 
+  return resolveScene(game, playing, ctx, lines);
+}
+
+/**
+ * The end of a scene: the outcome picked, its effects and the resonance
+ * applied, the history written, the village given its chance to answer.
+ *
+ * `silent` only drops the line
+ */
+function resolveScene(
+  game: Game,
+  playing: Scene,
+  ctx: SceneContext,
+  lines: NarrationLine[],
+  silent = false
+): StepResult {
   const outcome = resolveOutcome(playing, game.state, ctx);
-  lines.push(scene(outcome.text(game.state, ctx)));
+  if (!silent) lines.push(scene(outcome.text(game.state, ctx)));
   const changes = [
     ...outcome.effects(game.state, ctx),
     ...resonanceEffects(game, playing, ctx)

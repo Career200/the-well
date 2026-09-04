@@ -50,7 +50,7 @@ export interface Scene {
   repeatable?: boolean;
   /** The run ends when this scene resolves. */
   terminal?: boolean;
-  /** The coat cannot drop this scene; it plays on and the coat steers an outcome. */
+  /** The coat cannot cut this scene short; it plays its remaining beats out. */
   unhidable?: boolean;
   beats: Beat[];
   outcomes: Outcome[];

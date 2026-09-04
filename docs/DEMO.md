@@ -87,9 +87,14 @@ belonging discovered; the coat's hiding outcome takes the same back. Drives whic
 *The coat's hiding outcome:* the coat is the only belonging whose use reaches
 outside a scene. Used on a beat where somebody was about to arrive, there is no
 scene at all — whoever came is missed, the presence loses that `0.2`, and the
-scene is not spent. It hides **that beat only**. Used *during* a scene it drops
-that scene instead — no outcome, no history, so the same people can come again —
-unless the scene is marked `unhidable`, which only `the-hearing` is.
+scene is not spent. It hides **that beat only**.
+
+Used *during* a scene it resolves that scene where it stands: the outcome is
+picked, its effects and the resonance land, and the history is written, so the
+scene is spent and cannot be drawn again. Only the outcome's own line is
+withheld — the coat hides how it unfolded, not that it did. On `the-throwing`
+this ends the run. Scenes marked `unhidable`, which only `the-hearing` is, play
+their remaining beats out instead, and the coat is a resonance like any other.
 
 **attention** and **dread** — the well's two dials. What the living think about it,
 and how wrong it has become.

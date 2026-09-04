@@ -660,6 +660,46 @@ describe('hiding under the coat', () => {
     expect(hid, 'the coat never hid anything').toBe(true);
   });
 
+  it('spends the scene it is used inside, and withholds only the outcome', () => {
+    // Hiding is not skipping. Whatever the living were going to do, they did:
+    // the scene resolves where it stands and goes into the history, so it
+    // cannot be drawn again. The player is only kept from watching.
+    const start = found(newGame(pack, 5), 'coat');
+    const game: Game = {
+      ...start,
+      state: {
+        ...start.state,
+        objects: { ...start.state.objects, coat: { ...start.state.objects['coat']!, discovered: true } },
+      },
+      mode: { kind: 'scene', scene: 'first-water', ctx: { pressure: 0, resonance: null, beatIndex: 0 } },
+    };
+    const { game: after, lines } = step(game, { kind: 'attune', object: 'coat' });
+
+    expect(after.state.history.map((h) => h.scene)).toEqual(['first-water']);
+    expect(after.mode.kind).not.toBe('scene');
+    expect(lines.some((l) => pack.hiding!.includes(l.text)), 'the coat did not say it hid').toBe(true);
+
+    const outcomes = scenes.find((s) => s.id === 'first-water')!.outcomes;
+    const spoken = outcomes.map((o) => o.text(after.state, { pressure: 0, resonance: null, beatIndex: 0 }));
+    expect(lines.some((l) => spoken.includes(l.text)), 'the outcome was narrated anyway').toBe(false);
+  });
+
+  it('an unhidable scene plays its remaining beats out', () => {
+    const start = found(newGame(pack, 5), 'coat');
+    const hearing = scenes.find((s) => s.unhidable)!;
+    const game: Game = {
+      ...start,
+      state: {
+        ...start.state,
+        objects: { ...start.state.objects, coat: { ...start.state.objects['coat']!, discovered: true } },
+      },
+      mode: { kind: 'scene', scene: hearing.id, ctx: { pressure: 0, resonance: null, beatIndex: 0 } },
+    };
+    const { game: after } = step(game, { kind: 'attune', object: 'coat' });
+    expect(after.mode.kind).toBe('scene');
+    expect(after.state.history).toHaveLength(0);
+  });
+
   it('hides only the beat it is used on', () => {
     // A beat that does not reach for the coat is a beat the well is open on.
     for (const seed of [1, 3, 5, 8, 11, 21, 42]) {

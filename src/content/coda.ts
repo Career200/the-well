@@ -34,7 +34,14 @@ export const coda: Coda = {
   ],
 
   clauses: [
-    clause('body-found', ({ state }) => state.flags['body-found'] === true),
+    clause(
+      'body-found',
+      ({ state }) => state.flags['body-found'] === true && state.flags['stranger-in-the-well'] !== true,
+    ),
+    clause(
+      'body-found-again',
+      ({ state }) => state.flags['body-found'] === true && state.flags['stranger-in-the-well'] === true,
+    ),
     clause('confessed', ({ state }) => state.flags['tomas-confessed'] === true),
     clause('a-story', ({ state }) => state.flags['boy-told-a-story'] === true),
     clause('she-stayed', ({ state }) => played(state, 'first-water', 'the-word')),

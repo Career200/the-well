@@ -5,7 +5,10 @@
  *
  * Tone: nothing is confirmed on the way out, the village is never stupid,
  * nobody is a monster, and the word is not used. Verdicts may state what the
- * village decided, never what is true.
+ * village decided, never what is true. No names.
+ *
+ * A spine that is a deed opens with the people doing it. A spine that is a
+ * drift may go agentless.
  */
 
 export const spineProse = {
@@ -14,7 +17,7 @@ export const spineProse = {
   'thrown-cold':
     'They did it in the afternoon, with rope, and nobody hurried. Four days later they came back for him with better rope and a lamp and a man from the next parish who knew the knots, and they had him up before dark. Somebody had thought to bring a sheet. The priest stood out in the rain and said the name twice so the ones at the back would hear it. You were there for all of it, and now you know what it looks like when they actually try.',
   'thrown-afraid':
-    'It was done fast and badly, by men who could not look at each other afterwards, and then it was not spoken of, and nobody came back. He is not dead. Yet. He talks, and mostly not to anybody specific, and in between he moans in pain and listens for the rope. That will go on for a while. You are a foot from him and he has no idea, and there is nothing to be done about either of that.',
+    'They did it fast and badly and could not look at each other afterwards, and then they went home and did not speak of it, and none of them ever came back. He is not dead. Yet. He talks, and mostly not to anybody specific, and in between he moans in pain and listens for the rope. That will go on for a while. You are a foot from him and he has no idea, and there is nothing to be done about either of that.',
   stopped:
     'Somebody said no loud enough, and the rope went slack, and everyone went home, quietly thinking better of themselves. But the one who said it stopped sleeping, and then stopped coming to market, and in the spring he walked up the track alone at an hour nobody would see him, sat on the rim for a while, talked, but not with you. He had been carrying something for months and now he brought it down with him. It is in the silt near your hand now, as is he, and the well grows colder still.',
   sealed:
@@ -28,7 +31,9 @@ export const spineProse = {
 
 export const clauseProse = {
   'body-found':
-    "It was said out loud, once, that there is a person down there. Whose they didn't dare say. But they knew.",
+    'A woman said the name out loud, and nobody argued with her. Nobody said how he got there. They knew that too.',
+  'body-found-again':
+    'They had already named one man in this water. It did not slow them, coming back with the second.',
   confessed:
     'The one who knew more told somebody else. Somebody else who absolves sins and offers absolution.',
   'a-story':
@@ -36,7 +41,7 @@ export const clauseProse = {
   'she-stayed':
     'And she... She began coming for water she did not need — at first, only when the yard was empty, with a few words, and always looking behind before she said anything. By autumn she was talking the whole time the bucket was down, easy about it, the way you talk to somebody in the next room. In the spring she stopped going back to the house, and the ones who walked up to fetch her came down without her, and again. Eventually they stopped trying.',
   'nothing-left':
-    "Down here nothing keeps the warmth no more. You've spent all you've had on people who are won't reach you and who would not have known it was you, and whatever arrives next will find you all the hungrier.",
+    "Down here nothing keeps the warmth no more. You've spent all you've had on people who won't reach you and who would not have known it was you, and whatever arrives next will find you all the hungrier.",
 } as const;
 
 /** What the village will tell people who were not there, by settled belief. */
@@ -49,7 +54,7 @@ export const verdictProse = {
     'They will tell it as a sad thing that happened, and they will be gentle about it, and with their gentleness they will forget.',
   danger:
     'They will tell it is a bad place, and they will keep the children away. You will see one next to you soon, despite that.',
-  none: 'They never agreed on what it was. Many versions went around the same winter, and until they find something else to talk about, it will be remembered.',
+  none: 'No one version won. Half a dozen went round that same winter, and until they find something else to talk about, it will be remembered.',
 } as const;
 
 /** What you are, in as many words as the run earned. Keyed by tier. */
@@ -57,7 +62,7 @@ export const closeProse = {
   veiled:
     'And you, the cold does not let you go, and you have stopped expecting it to. There are warm shapes in the silt that you never got as far as knowing, and one of them is close enough to touch.',
   plain:
-    "There are three things you looked at properly, and they are yours, and you know it the way you knew things before. There is a fourth down here that you never quite reached. It's warmth is fainter with every passing year.",
+    "There are three things you looked at properly, and they are yours, and you know it the way you knew things before. There is a fourth down here that you never quite reached. Its warmth is fainter with every passing year.",
   named:
     'Your ring, in the silt, where your hand is. She gave it back to you by the gate and you carried it in your pocket the whole way here. That was your last thought and the last thing you ever did, and you have been down here a long time since then.',
 } as const;

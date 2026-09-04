@@ -50,14 +50,11 @@ without choosing an action.
 **turn** — `state.turn`, the integer counter. Use "beat" for play and "turn" for
 the number; they advance together but they are not the same word.
 
-**stance** — an engine-internal mode (`still` / `pressing` / `holding <object>`)
-that persists across beats and charges or refunds the presence once per beat.
-It is **not a UI concept and the player is never shown it.** The client has no
-stance display, no "you are currently holding" indicator, and no way to end a
-stance except by taking another action that happens to replace it. It is the old
-underlying mechanism that click-is-a-beat was built on top of.
-*Consequence worth knowing:* clicking a place (`look`) does not change stance, so
-a belonging you picked up keeps draining while you look around, invisibly.
+**one-click-one-effect** — the rule the engine and the UI both run on. An action
+is paid for, and does everything it does, on the beat it is clicked. Nothing
+persists into the next beat: there is no mode the presence is left in, and no
+action goes on costing after the click that bought it.
+*Not:* a stance, a hold, a sustained press. `WorldState` has no field for one.
 
 **verb** — one of the four things the player can do. Named by the button, not by
 the `PlayerAction` kind:
@@ -67,7 +64,7 @@ the `PlayerAction` kind:
 | **push**     | `push` button, footer                                     | `haunt`        | spends charge, adds pressure inside a scene            |
 | **be still** | `be still` button, footer                                 | `still`        | the only thing that recovers charge                    |
 | **look**     | a place in the picture, or an undiscovered belonging cell | `look`         | reads a subject; a belonging's first look discovers it |
-| **hold**     | a discovered belonging cell, footer                       | `attune`       | resonance; burns that belonging's finite charge        |
+| **use**      | a discovered belonging cell, footer                       | `attune`       | resonance; spends one of that belonging's three uses   |
 
 `wait` also exists in `PlayerAction` and **has no control in the client.** Only the
 sim policies emit it.
@@ -80,12 +77,19 @@ sim policies emit it.
 **the living** — anyone above. **the village** — them collectively, as an opinion.
 
 **charge** — `presence.charge`. Renewable. Recovered only by **be still**, spent
-only by **push**. Two pushes to a full bar.
+only by **push** — one **push** click, one `pressCost`. Two pushes to a full bar.
 *Not:* mana, energy. In the fiction it is how much of you there is.
 
 **lucidity** — how much the presence understands about itself. Rises `0.2` per
 belonging discovered; the coat's hiding outcome takes the same back. Drives which
 **tier** a subject answers at, and nothing else.
+
+*The coat's hiding outcome:* the coat is the only belonging whose use reaches
+outside a scene. Used on a beat where somebody was about to arrive, there is no
+scene at all — whoever came is missed, the presence loses that `0.2`, and the
+scene is not spent. It hides **that beat only**. Used *during* a scene it drops
+that scene instead — no outcome, no history, so the same people can come again —
+unless the scene is marked `unhidable`, which only `the-hearing` is.
 
 **attention** and **dread** — the well's two dials. What the living think about it,
 and how wrong it has become.
@@ -98,8 +102,13 @@ village decides the well *is*. Gates the coda.
 private feeling becomes public story.
 
 **the two levers** — **haunting** (push during a scene → fear → `haunted`/`danger`)
-and **resonance** (hold a belonging while someone is up there → that object's
-emotion → `tragedy`/`mystery`). These are the demo's whole strategy space.
+and **resonance** (use a belonging *during* a scene → that object's emotion →
+`tragedy`/`mystery`). These are the demo's whole strategy space.
+
+Both levers only reach the living from inside a scene. A belonging used at an
+empty rim is spent for nothing: nothing carries from an idle beat into a scene
+that starts later, and a scene always opens on an empty context. The one
+exception is the coat — see **lucidity**.
 
 ### The nine subjects
 
@@ -117,17 +126,18 @@ it has nothing to draw and nowhere to tap, so it is excluded from `ASKABLE` in t
 engine. Say "ambient" for the subject and "place" for the thing you touch, or the
 cold makes every sentence ambiguous.
 
-**belonging** — one of `ring`, `whistle`, `knife`, `coat`. Finite: three holds
-each, never recharged.
-*Not:* an item, an inventory, a pickup. A belonging is a stance you take, not a
-thing you carry.
+**belonging** — one of `ring`, `whistle`, `knife`, `coat`. Finite: three uses
+each, never recharged. A use is one beat — taken up, spent, and set down again,
+which is why the `hold` and `release` prose in `content/objects.ts` are read as
+a pair on the same beat.
+*Not:* an item, an inventory, or a pickup. A belonging is a thing you spend.
 
 **tier** — `veiled` / `plain` / `named`. Which register a subject answers in, from
 lucidity. Belongings run one tier ahead of ambients.
 
 **found / discovered** — two different flags. **found**: the silt gave it up, the
 cell lights, you may look. **discovered**: you have looked, it has a name, you may
-hold it.
+use it.
 
 ### Structure
 
@@ -176,7 +186,7 @@ read. Driven by narration timing, not by state.
 | beliefs / emotions | 4 / 6                                                       | `core/types.ts`                      |
 | coda spines        | 12                                                          | `content/coda.ts`                    |
 | doors              | 2                                                           | `core/coda.ts`                       |
-| controls on screen | 2 stance buttons + 4 belonging cells + 4 places             | `index.html`, `web/visuals.ts`       |
+| controls on screen | 2 verb buttons + 4 belonging cells + 4 places               | `index.html`, `web/visuals.ts`       |
 
 A run is beat zero (up to 16 beats) plus an idle/scene loop that ends on a terminal
 scene or on starvation.
@@ -232,8 +242,6 @@ Not right yet, and any new interaction has to answer for these:
   44px minimum.
 - **A belonging's warmth is desktop-only.** `feelOf()` goes into `title`; on touch
   only the `data-feel` colour survives.
-- **The debug panel is `position: fixed` bottom-right at 22rem** and covers the
-  controls on a phone.
 - **Mobile browser chrome resizes the viewport on scroll**, which fires the
   `ResizeObserver` and rebuilds every dot in the shaft. Untested under that.
 
@@ -254,9 +262,9 @@ Honest list, so nobody rediscovers these:
   though the shaft renders nothing but their consequences.
 - **`extra` is dead content.** All eight strings in `content/below.ts` are authored
   and read by no code.
-- **`readout.ts` is half-connected.** `water()` is used only for the shaft's
-  aria-label; `remaining()` is used nowhere. The footer shows literal meter bars
-  instead — a debug view in a costume.
+- **`readout.ts` is barely connected.** `water()` is used only for the shaft's
+  aria-label; `remaining()` is used nowhere at all. `#meters` is still built on
+  every render and then hidden by CSS, so it is dead markup.
 - **The sim never touches the ambients.** No policy in `sim/policies.ts` emits a
   `look` at a place, so the reachability sweep has zero coverage of that surface.
   Anything added there is untested by `pnpm sim`.

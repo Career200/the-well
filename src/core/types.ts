@@ -24,7 +24,7 @@ export type Scalar = number; // conventionally clamped to [0, 1]
  *   scene   someone is up there and this is happening to them: a storylet's
  *           beats and outcome, and what the presence does inside one.
  *   fact    the world resolving plainly — a subject coming into focus, a
- *           belonging held, a stance landing, a refusal. Not faded.
+ *           belonging used, an action landing, a refusal. Not faded.
  *   idle    the texture of an empty turn. The only faded one.
  *   system  the run talking about itself: the stop, the phase ending.
  *   coda    the ending. Arrives once and never again.
@@ -88,22 +88,12 @@ export interface WellState {
   dread: Scalar;
 }
 
-/**
- * What the presence is doing, and keeps doing until told otherwise. One at a
- * time, so blending pressing and holding is a matter of timing.
- */
-export type Stance =
-  | { kind: 'still' }
-  | { kind: 'pressing' }
-  | { kind: 'holding'; object: ObjectId };
-
+/** Two scalars, and nothing ongoing: every action is paid for on its own beat. */
 export interface PresenceState {
   /** Spent to haunt. Refills by waiting — silence is a resource. */
   charge: Scalar;
   /** How much the presence understands about itself. Rises on discovery. */
   lucidity: Scalar;
-  /** Held until changed. Ticked once per turn, before the scene advances. */
-  stance: Stance;
 }
 
 export interface WorldState {

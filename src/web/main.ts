@@ -1,7 +1,7 @@
 import { newGame, NOTHING_NEW, runStatus, step, TUNING } from '../core/engine.js';
 import type { Game, PlayerAction } from '../core/engine.js';
 import { pack } from '../content/index.js';
-import { feelBand, feelOf, stanceLine, water } from '../core/readout.js';
+import { feelBand, feelOf, water } from '../core/readout.js';
 import { BELIEFS, EMOTIONS } from '../core/types.js';
 import type { LineKind, NarrationLine } from '../core/types.js';
 import { makeShaft, PLACES } from './visuals.js';
@@ -230,6 +230,9 @@ function narrate(lines: readonly NarrationLine[]): number {
 
 function act(action: PlayerAction): void {
   const wasInScene = game.mode.kind === 'scene';
+  // The picture wants to know whether this beat was a push; it is an event,
+  // so the click is what says so.
+  pushedThisBeat = action.kind === 'haunt';
   const result = step(game, action);
   game = result.game;
   const delay = narrate(result.lines);
@@ -312,6 +315,8 @@ function push(source?: Element): void {
 const surfaced = (id: string): boolean => game.state.objects[id]?.found === true;
 
 let quiet = false;
+/** Whether the beat just played was a push. An event, not a condition. */
+let pushedThisBeat = false;
 let forgetting: ReturnType<typeof setInterval> | undefined;
 
 /**
@@ -356,7 +361,7 @@ function render(): void {
     lucidity: game.state.presence.lucidity,
     occupied: inScene,
     charge: game.state.presence.charge,
-    pressing: game.state.presence.stance.kind === 'pressing',
+    pressing: pushedThisBeat,
     turn: game.state.turn,
     // A place that is open moves until it is asked. Nothing signals while a
     // scene holds the turn — it would be offering something you cannot take.
@@ -395,8 +400,8 @@ function render(): void {
       button.classList.remove('unknown');
       continue;
     }
-    // A belonging is a stance, not an item slot: clicking it is *hold this*,
-    // held until the player is still. Warmth is the border.
+    // Not an item slot: clicking it spends one use, there and then.
+    // Warmth is the border.
     button.disabled = state.discovered && state.charge <= TUNING.spent;
     button.classList.toggle('unknown', !state.discovered);
     button.dataset['feel'] = state.discovered ? feelBand(state) : 'unknown';
@@ -440,7 +445,7 @@ function render(): void {
     return;
   }
 
-  // Push is the one stance that can be unavailable, and it says so rather than
+  // Push is the one verb that can be unavailable, and it says so rather than
   // costing a beat to find out. Stillness is never refused, and when it is the
   // only move left it calls — a greyed-out button says nothing about what you
   // *can* do. The two calls differ in kind: a belonging asks in warm light,
@@ -473,7 +478,6 @@ function dump(): object {
         },
       ]),
     ),
-    stance: stanceLine(s.presence, nameOf),
     status: status.kind === 'open' ? 'open' : `quiet — ${status.reason}`,
     objects: Object.fromEntries(Object.values(s.objects).map((o) => [o.id, Number(o.charge.toFixed(2))])),
     flags: Object.keys(s.flags).filter((f) => s.flags[f]),

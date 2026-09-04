@@ -190,6 +190,8 @@ export const scenes: Scene[] = [
     id: 'the-hearing',
     title: 'Anselm brings the village',
     cast: ['anselm', 'anna'],
+    // Too many of them to hide from. The coat sends the lamp home empty instead.
+    unhidable: true,
     requires: (s) => notoriety(s) > 0.4 && s.history.length >= 3,
     beats: [
       { text: () => 'Many feet. More people than have ever stood around this hole at once.' },
@@ -252,7 +254,7 @@ export const scenes: Scene[] = [
     outcomes: [
       {
         id: 'stopped',
-        when: (s, ctx) => (ctx.pressure >= UNDENIABLE && s.beliefs.haunted > 0.6),
+        when: (s, ctx) => (ctx.pressure >= UNDENIABLE && s.beliefs.haunted > 0.4),
         text: () => 'As the boards come off, you come up the wall with everything you have. They drop something - not the stranger. The lamp light disappears and the stranger stays at the rim. You know that from the sound he makes, a sound you have not heard since you had lungs.',
         effects: () => [
           { kind: 'belief', belief: 'haunted', delta: 0.4 },

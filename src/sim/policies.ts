@@ -27,22 +27,16 @@ export function choose(game: Game, pack: ContentPack, policy: Policy, roll: numb
     return game.state.presence.charge >= TUNING.pressCost * 2 ? { kind: 'haunt' } : { kind: 'still' };
   }
 
-  // Stances persist, so a stand-in has to know when to stop. Nobody keeps
-  // pushing at an empty rim; holding on is a gamble on who arrives.
-  const stance = game.state.presence.stance;
-  if (!inScene) {
-    if (stance.kind === 'pressing') return { kind: 'still' };
-    if (stance.kind === 'holding' && roll < 0.5) return { kind: 'still' };
-  }
-
   // Every policy but `idle` at least looks around; discovery is the tutorial.
   if (policy !== 'idle' && undiscovered.length > 0 && roll < 0.2) {
     return { kind: 'look', object: undiscovered[Math.floor(roll * 5) % undiscovered.length]!.id };
   }
 
-  // Pressing at nobody wastes the bar, and the narration says so.
+  // Pressing at nobody wastes the bar, and the narration says so. A belonging
+  // used at an empty rim is worse than wasted — it reaches nobody and does not
+  // keep, so a stand-in spends one only while somebody is up there to feel it.
   const wantsHaunt = !inScene ? 0 : policy === 'haunty' ? 0.6 : policy === 'mixed' ? 0.3 : 0;
-  const wantsAttune = policy === 'resonant' ? 0.5 : policy === 'mixed' ? 0.3 : 0;
+  const wantsAttune = !inScene ? 0 : policy === 'resonant' ? 0.5 : policy === 'mixed' ? 0.3 : 0;
 
   if (roll < wantsHaunt) return { kind: 'haunt' };
   if (roll < wantsHaunt + wantsAttune && discovered.length > 0) {

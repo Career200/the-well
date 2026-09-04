@@ -67,18 +67,19 @@ describe('presence economy', () => {
     expect(looked.state.presence.charge).toBe(0);
   });
 
-  it('pressing persists until released, and drains a full bar inside one scene', () => {
+  it('a push is paid for once, on the beat it is clicked', () => {
     let game = newGame(pack, 7);
     game = { ...game, state: { ...game.state, presence: { ...game.state.presence, charge: 1 } } };
     game = step(game, { kind: 'haunt' }).game;
-    expect(game.state.presence.stance.kind).toBe('pressing');
+    const afterOne = game.state.presence.charge;
+    expect(afterOne).toBeCloseTo(1 - TUNING.pressCost, 5);
 
-    // waiting does not stop it
-    game = step(game, { kind: 'wait' }).game;
-    expect(game.state.presence.stance.kind).toBe('pressing');
-    expect(game.state.presence.charge).toBeCloseTo(1 - TUNING.pressCost * 2, 5);
+    // no later beat pays for it again
+    game = step(game, { kind: 'look', object: 'walls' }).game;
+    expect(game.state.presence.charge).toBeCloseTo(afterOne, 5);
 
     // a full bar buys exactly two presses, which is exactly UNDENIABLE
+    game = step(game, { kind: 'haunt' }).game;
     expect(game.state.presence.charge).toBeLessThan(TUNING.pressCost);
     expect(TUNING.pressure * 2).toBeGreaterThanOrEqual(0.6);
   });
@@ -103,11 +104,15 @@ describe('presence economy', () => {
     expect(idle.state.flags[HAS_PRESSED]).toBeUndefined();
   });
 
-  it('choosing stillness returns to stillness', () => {
+  it('being still is the only thing that gathers', () => {
     let game = newGame(pack, 7);
-    game = step(game, { kind: 'haunt' }).game;
+    const start = game.state.presence.charge;
     game = step(game, { kind: 'still' }).game;
-    expect(game.state.presence.stance.kind).toBe('still');
+    expect(game.state.presence.charge).toBeCloseTo(start + TUNING.stillness, 5);
+
+    const gathered = game.state.presence.charge;
+    game = step(game, { kind: 'look', object: 'walls' }).game;
+    expect(game.state.presence.charge).toBeCloseTo(gathered, 5);
   });
 });
 
@@ -135,13 +140,38 @@ describe('belongings', () => {
     expect(game.state.objects.ring!.discovered).toBe(true);
   });
 
-  it('attuning holds only one thing at a time', () => {
+  it('using a belonging costs it once and leaves nothing running', () => {
     let game = found(newGame(pack, 3), 'ring', 'knife');
     game = step(game, { kind: 'look', object: 'ring' }).game;
     game = step(game, { kind: 'look', object: 'knife' }).game;
+
+    const before = game.state.objects.ring!.charge;
     game = step(game, { kind: 'attune', object: 'ring' }).game;
-    game = step(game, { kind: 'attune', object: 'knife' }).game;
-    expect(game.state.presence.stance).toEqual({ kind: 'holding', object: 'knife' });
+    expect(game.state.objects.ring!.charge).toBeCloseTo(before - TUNING.holdCost, 5);
+
+    // Everything a player might do next, none of which is about the ring.
+    const after = game.state.objects.ring!.charge;
+    game = step(game, { kind: 'look', object: 'knife' }).game;
+    game = play(game, wait(4));
+    expect(game.state.objects.ring!.charge).toBeCloseTo(after, 5);
+  });
+
+  it('a use in a scene is held across the beat that answers it', () => {
+    const start = found(newGame(pack, 5), 'ring');
+    const game: Game = {
+      ...start,
+      state: {
+        ...start.state,
+        objects: { ...start.state.objects, ring: { ...start.state.objects['ring']!, discovered: true } },
+      },
+      mode: { kind: 'scene', scene: 'first-water', ctx: { pressure: 0, resonance: null, beatIndex: 0 } },
+    };
+
+    // taken up, the scene moves, set down — not both halves before the beat
+    const { lines } = step(game, { kind: 'attune', object: 'ring' });
+    expect(lines.map((l) => l.kind)).toEqual(['fact', 'scene', 'fact']);
+    expect(lines[0]!.subjectId).toBe('ring');
+    expect(lines[2]!.subjectId).toBe('ring');
   });
 
   it('charge spent on a belonging never comes back', () => {
@@ -154,13 +184,15 @@ describe('belongings', () => {
     expect(after.state.objects.ring!.charge).toBeCloseTo(spent, 5);
   });
 
-  it('a belonging runs out for good, and drops itself when it does', () => {
+  it('a belonging runs out after three uses, and only from being used', () => {
     let game = found(newGame(pack, 3), 'ring');
     game = step(game, { kind: 'look', object: 'ring' }).game;
-    game = step(game, { kind: 'attune', object: 'ring' }).game;
+
+    // Three is the whole of a belonging, and time alone never takes any of it.
     game = play(game, wait(16));
+    expect(game.state.objects.ring!.charge).toBeCloseTo(1, 5);
+    for (let i = 0; i < 3; i++) game = step(game, { kind: 'attune', object: 'ring' }).game;
     expect(game.state.objects.ring!.charge).toBeLessThanOrEqual(TUNING.spent);
-    expect(game.state.presence.stance.kind).toBe('still');
 
     // asked for again, mid-run: a cold thing stays cold
     const fresh = found(newGame(pack, 3), 'ring');
@@ -494,32 +526,53 @@ describe('the village, said back', () => {
 });
 
 describe('hiding under the coat', () => {
-  it('misses whoever came, and costs a discovery', () => {
-    const start = found(newGame(pack, 3), 'coat');
-    let game: Game = {
+  /** An idle rim, the coat known, and whoever is coming very likely to come. */
+  const ready = (seed: number): Game => {
+    const start = found(newGame(pack, seed), 'coat');
+    return {
       ...start,
       mode: { kind: 'idle' },
       state: {
         ...start.state,
         presence: { ...start.state.presence, lucidity: 0.6 },
+        well: { ...start.state.well, attention: 1 },
         objects: { ...start.state.objects, coat: { ...start.state.objects['coat']!, discovered: true } },
       },
     };
-    game = play(game, [{ kind: 'attune', object: 'coat' }]);
-    const before = game.state.presence.lucidity;
+  };
 
-    // Only while there is coat left to hide under: three holds and it is cold,
-    // the stance drops, and the well is open to whoever comes next.
-    let hidden = 0;
-    for (let i = 0; i < 6; i++) {
-      const { game: next, lines } = step(game, { kind: 'wait' });
-      game = next;
-      if (!lines.some((l) => pack.hiding!.includes(l.text))) continue;
-      hidden++;
-      expect(game.mode.kind).not.toBe('scene');
+  it('misses whoever came, and costs a discovery', () => {
+    // The coat is the one belonging that reaches outside a scene, and it does
+    // it on the beat it is pulled over you — not for as long as it is worn,
+    // because it is not worn for any length of time any more.
+    let hid = false;
+    for (const seed of [1, 3, 5, 8, 11, 21, 42]) {
+      let game = ready(seed);
+      for (let i = 0; i < 3 && game.mode.kind === 'idle' && !hid; i++) {
+        const before = game.state.presence.lucidity;
+        const { game: next, lines } = step(game, { kind: 'attune', object: 'coat' });
+        game = next;
+        if (!lines.some((l) => pack.hiding!.includes(l.text))) continue;
+        hid = true;
+        expect(game.mode.kind, `seed ${seed} hid and let the scene start anyway`).not.toBe('scene');
+        expect(game.state.presence.lucidity).toBeLessThan(before);
+      }
+      if (hid) break;
     }
-    expect(hidden).toBeGreaterThan(0);
-    expect(game.state.presence.lucidity).toBeLessThan(before);
+    expect(hid, 'the coat never hid anything').toBe(true);
+  });
+
+  it('hides only the beat it is used on', () => {
+    // A beat that does not reach for the coat is a beat the well is open on.
+    for (const seed of [1, 3, 5, 8, 11, 21, 42]) {
+      let game = ready(seed);
+      game = step(game, { kind: 'attune', object: 'coat' }).game;
+      for (let i = 0; i < 8 && game.mode.kind === 'idle'; i++) {
+        const { game: next, lines } = step(game, { kind: 'wait' });
+        game = next;
+        expect(lines.some((l) => pack.hiding!.includes(l.text)), `seed ${seed} went on hiding`).toBe(false);
+      }
+    }
   });
 });
 
@@ -534,20 +587,18 @@ describe('who is speaking', () => {
     expect(result.lines[0]!.subject).toBe('the walls');
   });
 
-  it('a belonging is named through the whole of a hold', () => {
+  it('a belonging is named through the whole of a use', () => {
     let game = found(newGame(pack, 3), 'ring');
 
     const looked = step(game, { kind: 'look', object: 'ring' });
     expect(looked.lines[0]!.subject).toBe('the brass ring');
     game = looked.game;
 
-    const held = step(game, { kind: 'attune', object: 'ring' });
-    expect(held.lines[0]!.subject).toBe('the brass ring');
-    game = held.game;
-
-    // Letting go is still the ring talking — it is the ring's own release prose.
-    const released = step(game, { kind: 'still' });
-    expect(released.lines[0]!.subject).toBe('the brass ring');
+    // Taking it up and setting it down are both the ring's own prose, wherever
+    // the beat puts them — in a scene the answering beat falls between the two.
+    const used = step(game, { kind: 'attune', object: 'ring' });
+    const spoken = used.lines.filter((l) => l.subjectId === 'ring');
+    expect(spoken.map((l) => l.subject)).toEqual(['the brass ring', 'the brass ring']);
   });
 
   it('a glimpse has no name yet', () => {

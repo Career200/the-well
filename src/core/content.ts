@@ -95,7 +95,7 @@ export function initWorld(pack: ContentPack, seed: number): WorldState {
   return {
     seed,
     turn: 0,
-    presence: { charge: 0.5, lucidity: 0, stance: { kind: 'still' } },
+    presence: { charge: 0.5, lucidity: 0 },
     well: { attention: pack.well?.attention ?? 0.1, dread: pack.well?.dread ?? 0 },
     beliefs: Object.fromEntries(BELIEFS.map((b) => [b, 0])) as WorldState['beliefs'],
     people,

@@ -9,7 +9,11 @@ export interface SceneContext {
    * 0.6), and two is what a full bar buys. Nothing above that is reachable.
    */
   pressure: number;
-  /** The belonging the player is currently holding their attention on, if any. */
+  /**
+   * The belonging used during this scene. Kept for the rest of it, like
+   * `pressure`; a second use replaces the first. Always opens `null` —
+   * nothing carries in from an idle beat.
+   */
   resonance: Resonance | null;
   /** Beats already narrated, for scenes that want to know how far they got. */
   beatIndex: number;
@@ -49,6 +53,8 @@ export interface Scene {
   repeatable?: boolean;
   /** The last step of a road: the run ends on it. The other door is starvation. */
   terminal?: boolean;
+  /** The coat cannot drop this scene. It plays on, and the coat steers an outcome. */
+  unhidable?: boolean;
   beats: Beat[];
   outcomes: Outcome[];
 }

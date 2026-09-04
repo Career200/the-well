@@ -50,17 +50,6 @@ export const feelBand = (object: ObjectState): 'warm' | 'cooling' | 'nearly-cold
     'cold' as const,
   );
 
-export const stanceLine = (presence: PresenceState, nameOf: (id: string) => string): string => {
-  switch (presence.stance.kind) {
-    case 'still':
-      return 'still';
-    case 'pressing':
-      return 'pressing';
-    case 'holding':
-      return `holding the ${nameOf(presence.stance.object)}`;
-  }
-};
-
 /** How much is left in the belongings altogether. The run's other clock. */
 export const remaining = (state: WorldState): number =>
   Object.values(state.objects).reduce((sum, o) => sum + o.charge, 0);

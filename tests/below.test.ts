@@ -95,8 +95,8 @@ describe('beat zero', () => {
     const before = game.state.turn;
     game = step(game, { kind: 'look', object }).game;
     expect(game.state.turn).toBe(before + 1);
-    // looking at it is not taking it up
-    expect(game.state.presence.stance.kind).not.toBe('holding');
+    // looking at it is not using it
+    expect(game.state.objects[object]!.charge).toBe(1);
   });
 
   it('stops at the walls until the presence has acted once', () => {

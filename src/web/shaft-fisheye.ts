@@ -19,6 +19,7 @@
 import { cameraFor, DIALS, makeCamera, poseOf, samePose } from './camera.js';
 import type { Dials, Pose } from './camera.js';
 import { makeChrome, veil } from './chrome.js';
+import { makeFigure } from './figure.js';
 import { makeClock } from './clock.js';
 import { COURSES, JOINT_STEPS, RING_STEPS, SILT_RINGS, stepOf, WALLS } from './grain.js';
 import { crossing, extent, eyeAt, joint, polyline, projector, ring, WELL } from './projection.js';
@@ -95,7 +96,8 @@ export function makeFisheyeShaft(
   hole.id = 'sky-hole';
   const holeShape = svgEl('path');
   hole.append(holeShape);
-  defs.append(glow, skyLight(), hole);
+  const figure = makeFigure();
+  defs.append(glow, skyLight(), hole, ...figure.defs);
 
   // ---- the walls: one set of stones, cut at the waterline ----------------
   const wallsG = svgEl('g');
@@ -138,11 +140,12 @@ export function makeFisheyeShaft(
   rim.classList.add('rim');
   rim.setAttribute('fill', 'none');
 
-  // The lip is stonework and stays outside the clip; the disc travels, so it
-  // needs one.
+  // The lip is stonework and stays outside the clip; the disc and the body
+  // travel, so they need one. The body's own bottom is cut by the lip, which is
+  // the clip doing it.
   const through = svgEl('g');
   through.setAttribute('clip-path', 'url(#sky-hole)');
-  through.append(coin, skyDisc);
+  through.append(coin, skyDisc, figure.el);
 
   const skyG = svgEl('g');
   skyG.classList.add('sky', 'place-shape');
@@ -337,6 +340,9 @@ export function makeFisheyeShaft(
       attrs(skyDisc, { cx, cy, rx: moon, ry: moon });
       skyDisc.style.setProperty('--orbit-x', `${(rx * ORBIT).toFixed(1)}px`);
       skyDisc.style.setProperty('--orbit-y', `${(ry * ORBIT).toFixed(1)}px`);
+      // Every anchor the body takes is off this same box, so a pose that moves
+      // the opening moves the body with it.
+      figure.place({ cx, cy, rx, ry });
     }
 
     // Provisional: the three rings' screen crossings, which is enough to stack
@@ -391,6 +397,7 @@ export function makeFisheyeShaft(
     coin.style.opacity = String(1 - shut * OCCLUDED.coin);
     veil(svg, state, shut * OCCLUDED.room);
 
+    figure.pose(state);
     chrome.places(state);
   }
 
@@ -428,13 +435,13 @@ export function makeFisheyeShaft(
     },
     bands: () => bands,
     flash: chrome.flash,
-    /** No figure at this scope; the coat's hiding has nothing to play on yet. */
-    withdraw(): void {},
+    withdraw: figure.withdraw,
     destroy(): void {
       observer.disconnect();
       clock.stop();
       camera.stop();
       chrome.destroy();
+      figure.destroy();
       host.replaceChildren();
     }
   };

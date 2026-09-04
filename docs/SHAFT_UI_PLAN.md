@@ -232,7 +232,7 @@ purpose, for as long as it lasts.
 
 `web/projection.ts` holds the lens and the well as geometry, with no DOM and its
 own tests. `web/camera.ts` holds the pose the picture stands in and the move
-between poses. `web/shaft-fisheye.ts` draws rim, waterline, silt edge, joints cut
+between poses, and `web/figure.ts` the body at the rim. `web/shaft-fisheye.ts` draws rim, waterline, silt edge, joints cut
 at the surface, courses, and the floor grain, in two halves: `build` decides
 which elements exist and what world points each one carries and runs on a step of
 lucidity, and `reproject` walks those points through the current pose and runs on
@@ -256,6 +256,21 @@ arrived on gives the beat index exactly. Both poses ease with a smoothstep over
 scene the coat cuts short turns the camera around rather than letting it arrive
 first, and a scene ending takes the field back out and the tilt back down in one
 move. A dial in the panel lands at once, a dial not being a beat.
+
+`web/figure.ts` holds the body at the rim — head and shoulders, both levers as
+one scale, the hue a belonging tints it with, and the coat's half-arrival —
+placed from the opening's screen box and dressed by the same stylesheet rules
+the flat picture's figure uses.
+
+**The near lip is the top of the coin here.** The wall the camera has its back
+to is the closest part of the rim, 8.03 against the far lip's 8.53, and this
+lens carries the closest part furthest off the forward axis; the bearings run
+monotonically between the two. So the body comes over the top edge and leans
+down into the hole, where the flat picture has it come up out of the bottom, and
+a recoil takes it back up out of frame rather than down behind the stone. It
+sits on the near edge of the lit core rather than on the lip itself: the coin's
+falloff is nearly out by the stone, and a silhouette needs light behind it to be
+one.
 
 On 390×844 the pair reads: rest puts the rim's lower edge at 149px and the
 waterline at 643; `attend` at 213 and 701, which closes the floor's band to
@@ -292,11 +307,6 @@ may want to be real rather than a screen-space ellipse.
 
 ## Order
 
-**D. The figure and its states.** `occupied`, `leaving`, `recoil`, and
-`resonating` with `reach`. Every anchor the flat picture takes from the rim's
-centre and radii is a projected point here — the body scaling about the rim's
-near edge, the head about its own chin. `withdraw` stops being a no-op.
-
 **E. Water, and the push.** The grain in both modes, screen-space and
 world-space, switchable and then decided. Waves displace the ring's world `y`
 before projecting rather than bending a screen-space path. Then the level: the
@@ -310,6 +320,8 @@ and is still the one result that can invalidate the projection. What else the
 field of view answers to: `close` takes it per scene, and `dread` is a run-long
 scalar that might also — unsettled, and not in `ShaftState` either way. Pose
 timing off the delay array `narrate()` returns, the way `hold` times the figure,
-which is a move's duration becoming per-call rather than one constant. Deriving `bands`
+which is a move's duration becoming per-call rather than one constant. Which lip
+the body belongs on: it is on the near one, which the projection puts at the top
+of the coin, and the far one is a sign on `LIT_CORE` away. Deriving `bands`
 properly. Parity against the flat picture on everything the motion selector
 switches between.

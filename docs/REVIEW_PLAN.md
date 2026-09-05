@@ -1,0 +1,304 @@
+# Audit of `docs/REVIEW.md`, and the work that follows
+
+`claude/review-prototype` carries `docs/REVIEW.md` (1,451 lines) and five code
+commits on top of `52e5c2a`. This checks both against the tree.
+
+Everything below was re-measured. Commands are given so each number can be
+re-run.
+
+```sh
+pnpm typecheck                     # clean, before and after
+pnpm test                          # 125 tests, 5 files
+npx vite build                     # clean
+npx tsx src/cli/sim.ts             # 4 policies x 200 runs
+```
+
+---
+
+## Summary
+
+The prototype is green: `tsc`, 125 tests and `vite build` all pass, and the
+dead-code inventory is accurate — every symbol it deletes has exactly one
+reference in the tree, its own declaration.
+
+Two things do not hold.
+
+1. **The resonance fix does not fix the bug it is for.** It reads a person's
+   headroom from the state *before* the outcome's own effects are applied,
+   while the effects it emits are applied *after* them. On
+   `tomas-alone:confession` — the one outcome in the demo that fires on a
+   belonging's use and moves the same emotion that belonging carries — the
+   village still hears `tragedy 0.45` where the people moved by an amount worth
+   `0.30`. Measured below, with a patch that drives the error to zero.
+
+2. **Findings 1 and 4 are measured against a configuration that never shipped.**
+   `docs/REVIEW.md` labels one sweep column *"as the player plays it"*. That
+   column is beat zero switched on with policies that cannot play it — two of
+   four stand-in players sitting in the dark for sixteen beats. Against the
+   sweep as it actually ran, no outcome was unreachable and the two endings
+   called "effectively unreachable" were at 8.0% and 10.3% under `haunty`. The
+   document retracts finding 4 but keeps the table the retraction rests on.
+
+The sim change is still worth taking: `sweep` measuring a game the client does
+not run is a real defect. Its value is that the numbers describe the played
+game, not that it recovers content that was out of reach.
+
+---
+
+## 1. The resonance fix, measured
+
+`resolveScene` (`core/engine.ts:957`) builds one effect list and applies it in
+order — outcome first, resonance second:
+
+```ts
+const changes = [...outcome.effects(game.state, ctx), ...resonanceEffects(game, playing, ctx)];
+const state = applyEffects(game.state, changes);   // effects.reduce(applyEffect, state)
+```
+
+The prototype clamps `carried` to `1 - felt`, with `felt` read from
+`game.state` — the state before the outcome's effects. Four object emotions
+overlap with an outcome that moves the same emotion on the same person:
+
+| belonging | emotion | outcome that also moves it |
+| --- | --- | --- |
+| `knife` | `guilt` | `tomas-alone:confession` (+0.30), `:terror` (+0.15), `:nothing` (+0.10) |
+| `coat` | `grief` | `first-water:the-word` (+0.45), `the-hearing:a-body` (+0.40) |
+| `whistle` | `curiosity` | `boys-at-the-rim:hooked` (+0.35) |
+| `ring` | `tenderness` | none |
+
+`confession` fires only on `ctx.resonance?.object === 'knife'`, so the knife and
+the outcome always land together. Driving that scene at a range of starting
+`tomas.guilt`, reading `beliefs.tragedy` against the movement the world took:
+
+| `guilt` before | `guilt` after | moved by resonance | `tragedy` | correct | error |
+| --- | --- | --- | --- | --- | --- |
+| 0.30 | 1.000 | 0.400 | 0.650 | 0.500 | **+0.150** |
+| 0.50 | 1.000 | 0.200 | 0.550 | 0.400 | **+0.150** |
+| 0.60 | 1.000 | 0.100 | 0.500 | 0.350 | **+0.150** |
+| 0.70 | 1.000 | **0.000** | 0.450 | 0.300 | **+0.150** |
+| 0.80 | 1.000 | 0.000 | 0.400 | 0.300 | +0.100 |
+| 0.90 | 1.000 | 0.000 | 0.350 | 0.300 | +0.050 |
+| 1.00 | 1.000 | 0.000 | 0.300 | 0.300 | 0.000 |
+
+At 0.70 the outcome alone saturates Tomas. Resonance moves him by nothing and
+the village hears 0.15 of tragedy for it. That is finding 2 restated, inside the
+commit that closes finding 2. The prototype's own probe used the ring on Anna —
+`tenderness`, the one object emotion no outcome touches, and the only case its
+shortcut gets right.
+
+### The patch
+
+Derive `carried` from applied movement, and give `resonanceEffects` the state
+its effects will actually land on.
+
+```diff
+-  const changes = [
+-    ...outcome.effects(game.state, ctx),
+-    ...resonanceEffects(game, playing, ctx)
+-  ];
+-  const state = applyEffects(game.state, changes);
++  const outcomeChanges = outcome.effects(game.state, ctx);
++  const afterOutcome = applyEffects(game.state, outcomeChanges);
++  const resonance = resonanceEffects(afterOutcome, game, playing, ctx);
++  const changes = [...outcomeChanges, ...resonance];
++  const state = applyEffects(afterOutcome, resonance);
+```
+
+```ts
+function resonanceEffects(state: WorldState, game: Game, scene: Scene, ctx: SceneContext): Effect[] {
+  if (!ctx.resonance) return [];
+  const def = objectDef(game, ctx.resonance.object);
+  if (!def) return [];
+
+  const emotions: Effect[] = [];
+  for (const person of scene.cast) {
+    const delta =
+      TUNING.resonanceGain * def.power * (def.affinity[person] ?? 0.1) * (state.objects[def.id]?.charge ?? 0);
+    if (delta <= 0.01) continue;
+    emotions.push({ kind: 'emotion', person, emotion: def.emotion, delta });
+  }
+
+  // The village reads the people, so belief follows the movement `applyEffect`
+  // let through, not the movement asked for.
+  const moved = applyEffects(state, emotions);
+  const felt = (w: WorldState, p: PersonId): number => w.people[p]?.emotions[def.emotion] ?? 0;
+  const carried = scene.cast.reduce((sum, p) => sum + (felt(moved, p) - felt(state, p)), 0);
+  if (carried <= 0.01) return emotions;
+
+  return [
+    ...emotions,
+    { kind: 'belief', belief: BELIEF_OF_EMOTION[def.emotion], delta: carried * 0.5 },
+    { kind: 'well', field: 'attention', delta: carried * 0.3 },
+  ];
+}
+```
+
+`PersonId` joins the type import from `./types.js`. Applied: `tsc` clean, 125
+tests pass, and the error column above is `0.000` at every row.
+
+The regression test the fix needs, in `tests/engine.test.ts`: resolve
+`tomas-alone` with the knife at `tomas.guilt = 0.7` and assert
+`beliefs.tragedy` is `0.3` — the authored outcome alone, because the people had
+no room left to move.
+
+---
+
+## 2. What the three sweep configurations measure
+
+| | `newGame` | policies |
+| --- | --- | --- |
+| **(a) shipped** | `newGame(pack, i)` | no beat-zero branch |
+| **(b) `REVIEW.md`'s right-hand column** | `newGame(pack, i, { below: true })` | no beat-zero branch |
+| **(c) prototype** | `newGame(pack, i, { below: true })` | beat-zero branch |
+
+Coda spine reached, 400 runs per policy, 1,600 per configuration:
+
+| spine | (a) shipped | (b) "as the player plays it" | (c) prototype |
+| --- | --- | --- | --- |
+| `never-woke` | 0.0% | 50.0% | 25.0% |
+| `thrown-cold` | 14.8% | 14.1% | 21.5% |
+| `thrown-afraid` | 20.8% | 5.9% | 19.2% |
+| `stopped` | **2.0%** | 0.0% | 1.9% |
+| `sealed` | **3.0%** | 0.1% | 2.7% |
+| `forgotten` | 46.1% | 21.8% | 13.9% |
+| `undecided` | 13.4% | 8.0% | 15.8% |
+
+Under `haunty` alone: `stopped` 8.0% in (a) against 7.2% in (c); `sealed` 10.3%
+against 9.5%.
+
+Scene outcomes reached by at least one policy, `pnpm sim` as it runs:
+
+```
+outcomes never reached, (a): 0 of 19
+outcomes never reached, (c): 0 of 19
+the-throwing:stopped, (a): 5% under haunty      (c): 5% under haunty
+```
+
+`docs/REVIEW.md` W.2 reports this pair as `3 -> 0` and `0.0% -> 1.9%`. Both
+figures are (b) against (c). Column (b) is the configuration the prototype
+produced by applying `{ below: true }` to `sweep` without the policy branch;
+it is not what `pnpm sim` printed at any commit.
+
+The change to take from this is (a) to (c): the sweep now runs beat zero, so its
+numbers describe the game the client starts. `never-woke` at 25% is `idle`
+correctly never leaving the dark, and `forgotten` falling from 46.1% to 13.9% is
+sixteen beats of the turn budget going to beat zero. Neither is coverage
+recovered.
+
+---
+
+## 3. Finding by finding
+
+| # | claim | verdict |
+| --- | --- | --- |
+| 1 | `sweep` skips beat zero, the client does not | **holds.** `policies.ts:60` vs `main.ts:26`. Fix correct; its measured benefit is validity, not coverage |
+| 2 | resonance scored on unapplied deltas | **holds. Fix incomplete** — §1 above |
+| 3 | resonance out-scales the outcome it rides on | **holds.** `first-water` 0.346 against 0.300; on `tomas-alone` the corrected engine still gives 0.20 of tragedy from the knife against the outcome's 0.30. A dial, not a break |
+| 4 | two endings effectively unreachable | **fails.** 2.0% and 3.0% in the shipped sweep. Retracted in the document, but §1's table still labels (b) as the player's game |
+| 5 | nothing runs the tests | **holds.** `pages.yml` was the only workflow. `check.yml` is correct: `pnpm/action-setup` before `setup-node`'s `cache: pnpm`, lockfile committed |
+| 6 | two renderers, the tested one does not ship | **holds**, and the document's own E.2 answers it: `NEXT_STEPS.md` names the fisheye as the successor. A decision |
+| 7 | engine rules reimplemented in the view | **holds**, unverified by running the client. Not touched |
+| 8 | cells name a belonging differently from the narration | **holds.** Fix works; see step 2 below for the phone question it opens |
+| 9 | the four places are outside the accessibility tree | **holds.** `role="img"` makes its subtree presentational. Fix is complete in both renderers: `role` on the SVG, `aria-label` through `Shaft.label`, `chrome.regions` a sibling of it |
+| 10 | mobile-first stated, not met | **plausible, unmeasured.** Arithmetic on the stylesheet; the document states it never ran the game |
+| 11 | `DEMO.md` is wrong about the code | **holds.** 7 spines against 12 claimed; `content/below.ts` does not exist; `PLACES` is in `web/shaft.ts`. Not fixed |
+| 12 | determinism unusable from the client | **holds. Fix incomplete** — `makeRng` still reads `seed >>> 0 \|\| 0x9e3779b9`, so `?seed=0` and `sweep`'s run 0 both alias to the constant. Listed as closed |
+| 13 | dead code | **holds.** Every deleted symbol had one reference, its own declaration. `CODA_MARGIN` was listed and correctly left alone — it is used in its own file |
+| A | the logic is overblown in parts | method sound: measured at the decision point after a confounded first attempt, which it reports |
+| B | the comments are prose-poisoned | method sound: 757 comments lexed with literals masked |
+
+---
+
+## The plan
+
+### Step 1 — take from the prototype unchanged
+
+Green as they stand: `tsc`, 125 tests, `vite build`.
+
+- `.github/workflows/check.yml` — `pnpm typecheck` and `pnpm test` on push and
+  pull request.
+- The accessibility fix: `role="img"` on the SVG in `visuals.ts` and
+  `shaft-fisheye.ts`, `label(text)` on the `Shaft` contract, `role` off
+  `#shaft` in `index.html` and `shaft.html`.
+- Dead code: `Beat.interactive`, `remaining()`, `isQuiet()`, `nameOf()`,
+  `ObjectDef.discovered`, `Rng.state`, `#meters` and its CSS.
+- `sim/policies.ts`: the beat-zero branch in `choose`, and
+  `newGame(pack, i, { below: true })` in `sweep`. Both lines are needed; either
+  alone leaves the tool measuring configuration (a) or (b).
+
+### Step 2 — three items to decide before taking
+
+- **The 7 `extra` strings and the `boy-is-curious` flag.** Both are dead by
+  measurement. Both are authored content, and `DEMO.md:269` lists `extra` under
+  *Known soft spots* — "All eight strings … are authored and read by no code" —
+  which reads as kept on purpose. Deleting them also makes that bullet, and its
+  count, wrong in a new way.
+- **`CELLS` from `pack.objects`.** `#subjects` is `repeat(4, 1fr)` with
+  `white-space: nowrap; text-overflow: ellipsis` on `.cell .label`
+  (`style.css:249-268`). At 360px each cell is about 80px. `the ring` fits;
+  `the brass ring`, `the tin whistle` and `the short knife` are 14–15
+  characters at `0.78em` of `0.85rem` and will clip. The fix is right that one
+  name should come from one place; whether that name is the long one is a
+  question for a phone. Fallback: carry a short label in `ObjectDef` so both
+  registers read from content.
+- **`history.replaceState`.** Pinning the seed into the address bar means a
+  refresh replays the same run for good; a new run needs the query string
+  cleared by hand. Showing the seed without writing it to the URL, or writing it
+  only when it was asked for, keeps finding 12's benefit without that.
+
+### Step 3 — replace the resonance fix
+
+The patch in §1, plus the `tomas-alone` regression test. Do this before any
+`resonanceGain` decision: the constant is being judged through the bug.
+
+### Step 4 — finish the seed fix
+
+`core/rng.ts`:
+
+```ts
+let s = Number.isInteger(seed) ? seed >>> 0 : 0x9e3779b9;
+```
+
+`0` becomes a valid seed, and `sweep`'s run 0 stops sharing a stream with every
+non-integer seed. Keep the client-side validation; drop `asked > 0` once
+`makeRng` accepts 0.
+
+### Step 5 — the corrections nothing has made
+
+`docs/DEMO.md`: 12 spines to 7 (lines 163, 193, 211); `content/below.ts` to
+`content/prose/below.ts` (121, 191); `PLACES` to `web/shaft.ts` (127, and
+again in the table row at 191, which cites `web/visuals.ts` for the places); the
+`extra` bullet's count (269), or the bullet itself if step 2 removes the field.
+
+`docs/REWRITE.md`: the file-size table is 2.9x out on `core/engine.ts` and 5.3x
+on `tests/`, and promises the stance switch, which `a47146e` removed. A
+staleness note is enough; the table is not load-bearing.
+
+If `docs/REVIEW.md` is kept in the tree, §1's table needs its column relabelled
+and W.2's before-column restated against (a). As written they are the two
+numbers most likely to be quoted back.
+
+### Step 6 — make the sim answer the questions asked of it
+
+Every spine figure in `REVIEW.md`, and every one in this document, came from a
+throwaway script, because `RunReport` records outcomes and beliefs and nothing
+else.
+
+- `RunReport` records `door` and `spine`. `game.mode` is
+  `{ kind: 'over', door, spine }` at the end of a run, so this is a tally
+  alongside the ones already there.
+- `tests/reachability.test.ts:16` passes a branch at one hit in 480 runs, and
+  takes the maximum across policies. A floor per policy states what the comment
+  above it already claims.
+- `choose` drives five decisions from one `roll` per turn
+  (`policies.ts:27-38`). Under `mixed`, `roll < 0.2` is a subset of
+  `roll < 0.3`, so a look always takes a beat that would have pushed, and the
+  attune index is only ever evaluated on `roll` in `[0.3, 0.6)`. One roll per
+  decision.
+
+### Decisions, not tasks
+
+Unchanged from the review's own reading, and none of them blocked by the steps
+above: `resonanceGain` (re-open after step 3); which projection to keep;
+splitting `step()`; and whether `CLAUDE.md`'s "what it is not" bans contrastive
+definition, which decides 68 comments.

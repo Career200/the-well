@@ -1008,11 +1008,15 @@ function resonanceEffects(
   const effects: Effect[] = [];
   let carried = 0;
   for (const person of scene.cast) {
-    const delta =
+    const asked =
       TUNING.resonanceGain *
       def.power *
       (def.affinity[person] ?? 0.1) *
       (game.state.objects[def.id]?.charge ?? 0);
+    // What the clamp in `applyEffect` will let through. The village reads the
+    // people, so a person with no headroom carries nothing to it.
+    const felt = game.state.people[person]?.emotions[def.emotion] ?? 0;
+    const delta = Math.min(asked, 1 - felt);
     if (delta <= 0.01) continue;
     effects.push({ kind: "emotion", person, emotion: def.emotion, delta });
     carried += delta;

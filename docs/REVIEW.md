@@ -1020,10 +1020,22 @@ change the answer to most of the rest.**
 Eight of the fourteen findings, for a change that leaves the tree smaller than
 it started.
 
-## W.2 The 16 lines that re-measure the game
+## W.2 The 17 lines that re-measure the game
 
-`sim/policies.ts` gains a beat-zero branch (11 lines) and `resonanceEffects`
-clamps to headroom (5 lines). Same 1,600-run sweep, before and after:
+`sim/policies.ts` gains a beat-zero branch (11 lines) **and one more line in
+`sweep` itself**, and `resonanceEffects` clamps to headroom (5 lines).
+
+> **Corrected.** This section first said 16 lines and credited the change to the
+> policy branch alone. That was wrong. `sweep` still called
+> `newGame(pack, i)` — no `{ below: true }` — so the new branch never ran under
+> `pnpm sim`, and the tool's output was byte-identical to before the fix. The
+> numbers below were always real, but they came from measurement scripts that
+> passed `{ below: true }` explicitly, not from the shipped tool. The
+> seventeenth line is `newGame(pack, i, { below: true })` at
+> `sim/policies.ts:71`. With it, `pnpm sim` reports what the table says; without
+> it, nothing about the tool changes at all.
+
+Same 1,600-run sweep, before and after:
 
 | | before | after |
 | --- | --- | --- |
@@ -1332,3 +1344,108 @@ contradicted the claim it was testing.
 The pattern in the failures is one thing: **every wrong call came from trusting
 a measurement whose blind spot had already been identified, rather than from
 missing something.** The instrument was the finding, twice.
+
+---
+
+# Status of every finding
+
+The document above is four passes stacked in the order they happened, which
+makes it hard to see what is left. This is the whole list, checked against the
+prototype rather than recalled.
+
+**Nothing here is on a branch.** The prototype lives in a throwaway worktree.
+`claude/codebase-review-report-p04lq0` carries this document and no code.
+
+## Closed by the prototype
+
+| # | finding | how |
+| --- | --- | --- |
+| 1 | sim measures a game nobody plays | policies play beat zero (11 lines) **+ `sweep` passes `{ below: true }`** (1 line) — see the correction in W.2 |
+| 2 | resonance scored on unapplied deltas | clamp to headroom (5 lines) |
+| 5 | nothing runs the tests | `.github/workflows/check.yml` (19 lines) |
+| 8 | cells show a different name from the narration | built from `pack.objects` |
+| 9 | places invisible to a screen reader | `role="img"` moved to the SVG; verified in the built bundle |
+| 12 | determinism unusable from the client | seed validated and written to the URL |
+| 13 | dead code | 10 items, −50 lines |
+
+**4** is retracted — it was finding 1 in disguise.
+**3** is downgraded: a smooth dial, not a break. The decision is E.1.
+
+## Open, and owned by an option
+
+| # | finding | where |
+| --- | --- | --- |
+| 3 | resonance out-scales the outcome it rides on | E.1 |
+| 6 | two renderers; the tested one does not ship | E.2 (which to keep) + E.4 (how to test it) |
+| 7 | engine rules reimplemented in the view | E.5 |
+| A.4 | `step()` is 278 lines | E.3 |
+| A.3 | the beat-zero queue is over-built | E.3, as *simplify rather than extract* |
+| B.2 | 68 comments say what a thing is not | E.6 |
+
+## Open, valid, and owned by nothing
+
+This is the honest answer to "what is left over." Fifteen items that no option
+or plan entry covers.
+
+**The sim, beyond finding 1.** Fixing beat zero did not fix the rest of it.
+
+1. `choose` still drives every decision from **one roll per turn**
+   (`policies.ts:38-48`) — the look gate, both lever gates and both object
+   indices. The decisions are correlated and the per-object rates are biased.
+2. `RunReport` still records only outcomes and beliefs. **The seven coda spines
+   have no coverage in the shipped tool** — every spine number in this document
+   came from a throwaway script.
+3. `tests/reachability.test.ts` still passes a branch at **one hit in 480 runs**,
+   and its "never guaranteed" assertion still bounds a total that cannot
+   approach its ceiling.
+
+**Guards that cannot fire.** A.3 listed eight; the prototype deleted one
+(`Rng.state`).
+
+4. `effects.ts:22,51,56,64` — four `!person`/`!object` guards.
+5. `scene.ts:62-65` — `resolveOutcome`'s no-match fallback and its `throw`.
+6. `rng.ts:37` — `pickWeighted`'s tail return, and it still does not enforce the
+   positive-weights contract it documents.
+7. `ledger.ts:31` — the `DEFAULT` channel, and the comment describing a case
+   that cannot arise.
+
+**The mobile pass.** W.3 sized these; none is done.
+
+8. `.cell` is still ≈80 × 33 px against a 44px minimum (`style.css:255-261`).
+9. `ResizeObserver` still rebuilds every dot, uncoalesced (`visuals.ts:566`).
+10. `button.title` is still the only carrier for a belonging's warmth
+    (`main.ts:522`), and does not exist on touch.
+11. A refused push still strikes the water clock (`main.ts:216`).
+
+**Everything else.**
+
+12. **The docs are still wrong.** `DEMO.md` still says "Twelve spines" where
+    there are 7, still cites `content/below.ts`, which does not exist, and still
+    puts `PLACES` in the wrong module. `REWRITE.md` still sizes `engine.ts` at
+    413 lines against 1,185.
+13. `readout.ts` — `remaining()` is deleted, but `water`, `feelOf` and
+    `feelBand` are **still called by no test**. E.4 covers the renderer, not
+    these.
+14. The place machinery — three flag families and five helpers for **1.10
+    events a run** (A.3). No option proposes anything; the choice is to thin it
+    or to give the places more to say, and neither is written down.
+15. Loose ends in §14 and A.3 that nothing tracks: `HAS_PRESSED` retyped as a
+    literal in `content/coda.ts:26`; `runStatus` computed three times per
+    `step` and a fourth in the client; the `1 - k * a` singularity at
+    `visuals.ts:276`; the dead `id !== undefined` at `engine.ts:119`; the dead
+    `angle` initialiser at `visuals.ts:287`; `BelowPhase.pending` typed as
+    `NarrationLine[]` inside the phase runner; two comments truncated
+    mid-sentence (`visuals.ts:226`, `main.ts:303`) and two describing code that
+    is not there (`visuals.ts:474`, `engine.ts:946`); `analytics.ts:9` loading a
+    third-party script over a protocol-relative URL with no `integrity` and no
+    CSP anywhere in the tree; the three second-person comments in `coda.ts` and
+    `content.ts`; and `package.json` still defining `lint` as an alias for
+    `typecheck`, so there is still no linter.
+
+## What that adds up to
+
+Of fourteen numbered findings plus the two appendices: **7 closed, 1 retracted,
+1 downgraded, 6 waiting on a decision, and 15 loose items with no owner.** The
+loose items are individually small — most are one line — but they are the part
+of the review that would quietly rot, because nothing in the plan points at
+them.

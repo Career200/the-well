@@ -898,3 +898,16 @@ describe('who is speaking', () => {
     expect(new Set(glimpseNames).size).toBe(pack.objects.length);
   });
 });
+
+describe('the rng takes any integer seed', () => {
+  it('0 is a seed of its own, not the fallback', () => {
+    const zero = Array.from({ length: 4 }, () => makeRng(0).next());
+    const fallback = Array.from({ length: 4 }, () => makeRng(NaN).next());
+    expect(zero[0]).not.toBeCloseTo(fallback[0]!, 10);
+  });
+
+  it('a run seeded 0 replays', () => {
+    const actions = wait(12);
+    expect(play(newGame(pack, 0), actions).state).toEqual(play(newGame(pack, 0), actions).state);
+  });
+});

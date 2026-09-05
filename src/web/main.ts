@@ -22,7 +22,11 @@ if (import.meta.env.DEV) {
   });
 }
 
-const seed = Number(new URLSearchParams(location.search).get('seed') ?? Math.floor(Math.random() * 1e5));
+// An absent, empty or non-integer `?seed=` starts a fresh run. `makeRng` takes
+// any integer, 0 included.
+const param = new URLSearchParams(location.search).get('seed');
+const asked = param ? Number(param) : NaN;
+const seed = Number.isInteger(asked) ? asked : Math.floor(Math.random() * 1e5);
 let game: Game = newGame(pack, seed, { below: true });
 
 const el = <T extends HTMLElement>(id: string): T => {
@@ -38,12 +42,7 @@ const subjects = el('subjects');
  * The four belongings, in reading order. Built once: cells change state, the
  * layout never moves. The five places live in the picture — see `visuals.ts`.
  */
-const CELLS: { id: string; label: string }[] = [
-  { id: 'ring', label: 'the ring' },
-  { id: 'whistle', label: 'the whistle' },
-  { id: 'knife', label: 'the knife' },
-  { id: 'coat', label: 'the coat' },
-];
+const CELLS: { id: string; label: string }[] = pack.objects.map((o) => ({ id: o.id, label: `the ${o.name}` }));
 
 const cells = new Map<string, HTMLButtonElement>();
 const labels = new Map<string, HTMLSpanElement>();

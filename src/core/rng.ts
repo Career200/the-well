@@ -7,7 +7,7 @@ export interface Rng {
 }
 
 export function makeRng(seed: number): Rng {
-  let s = seed >>> 0 || 0x9e3779b9;
+  let s = Number.isInteger(seed) ? seed >>> 0 : 0x9e3779b9;
   return {
     next() {
       // mulberry32

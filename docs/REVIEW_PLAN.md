@@ -334,3 +334,127 @@ Unchanged from the review's own reading, and none of them blocked by the steps
 above: `resonanceGain` (re-open after step 3); which projection to keep;
 splitting `step()`; and whether `CLAUDE.md`'s "what it is not" bans contrastive
 definition, which decides 68 comments.
+
+---
+
+# `resonanceGain`, measured
+
+`TUNING.resonanceGain` is 3.5. Everything below was measured on the corrected
+engine, 300 runs x 4 policies at each value, 60 turns.
+
+## What the dial does
+
+| gain | terminal | haunted | mystery | tragedy | danger | thrown-cold | forgotten | outcomes under the floor |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 0.0 | 22% | 0.11 | 0.08 | 0.07 | 0.13 | 3% | 29% | 0 |
+| 1.0 | 29% | 0.11 | 0.09 | 0.11 | 0.16 | 6% | 25% | 0 |
+| 2.0 | 35% | 0.11 | 0.10 | 0.15 | 0.18 | 11% | 18% | 0 |
+| 2.5 | 38% | 0.11 | 0.11 | 0.17 | 0.19 | 13% | 17% | 0 |
+| 3.0 | 40% | 0.11 | 0.11 | 0.19 | 0.19 | 16% | 15% | 0 |
+| **3.5** | **42%** | **0.11** | **0.11** | **0.21** | **0.20** | **18%** | **14%** | **0** |
+| 4.5 | 46% | 0.11 | 0.12 | 0.24 | 0.22 | 22% | 12% | 0 |
+
+Smooth from 0 to 4.5, no breakpoint. `haunted` sits at 0.11 at every value:
+resonance does not touch it. `stopped` and `sealed` hold at 2% and 3%
+throughout. **At gain 0 every outcome and every coda spine is still reached**,
+so nothing in the demo depends on resonance moving belief at all.
+
+What the dial trades is `forgotten` against `thrown-cold`, with `tragedy` as
+the carrier: 29% -> 12% and 3% -> 22% across the range.
+
+## The emotion half moves nothing
+
+`resonanceEffects` emits two things: `emotion` effects on the cast, and the
+`belief` and `well` effects derived from them. Holding the emotions and
+dropping the other two, then sweeping the gain from 0 to 6:
+
+```
+gain    confession      terror     nothing     stopped   mean tomas.guilt
+0.00            64         415         421          19   0.453
+0.50            64         415         421          19   0.457
+2.00            64         415         421          19   0.467
+6.00            64         415         421          19   0.471
+```
+
+Byte-identical outcome counts across a 60x range. `BELIEF_OF_EMOTION`
+(`core/types.ts:98`) is read in exactly one place, `engine.ts:1037`, and the
+emotions it converts feed only `tomas-alone`'s `weight` and the `confession`
+gate — a mean guilt swing of 0.018 against a `feel >= 0.3` threshold and a
+`1 + feel * 3` weight. **Every observable effect of the resonance lever runs
+through the belief and attention effects.** Deleting them, on the content as
+written, leaves the lever inert.
+
+## Per beat, from a fresh village
+
+Belief moved by the authored outcome against belief moved by the resonance
+riding with it, for each scene and belonging:
+
+| | outcome | resonance at 3.5 | ratio | resonance at 2.0 | ratio |
+| --- | --- | --- | --- | --- | --- |
+| `first-water` + ring (`the-word`) | 0.300 | 0.346 | 1.16x | 0.198 | 0.66x |
+| `first-water` + coat (`quiet`) | 0.050 | 0.243 | 4.85x | 0.139 | 2.77x |
+| `the-asking` + coat (`settled`) | **0.000** | 0.416 | — | 0.238 | — |
+| `the-asking` + ring (`settled`) | **0.000** | 0.381 | — | 0.218 | — |
+| `the-hearing` + coat (`under-the-coat`) | 0.100 | 0.416 | 4.16x | 0.238 | 2.38x |
+| `tomas-alone` + knife (`confession`) | 0.300 | 0.175 | 0.58x | **0.175** | 0.58x |
+| `the-throwing` + knife (`thrown-cold`) | 0.350 | 0.325 | 0.93x | 0.231 | 0.66x |
+
+Across the 14 pairs where the outcome moves belief at all, resonance out-moves
+the outcome in 7 of 14 at gain 3.5 and 4 of 14 at 2.0; the range runs 0.09x to
+4.85x at 3.5 and 0.05x to 2.77x at 2.0.
+
+**The gain does not scale every case.** Where the clamp already binds, the
+value makes no difference: `tomas-alone` + knife is 0.175 at both 3.5 and 2.0,
+and `boys-at-the-rim` + whistle is 0.075 at both, because the authored outcome
+saturates the person before the resonance is applied. Lowering the gain moves
+the cases with headroom and leaves the saturated ones where they are.
+
+Notoriety after one use on the first scene, from zero:
+
+| | at 3.5 | `the-hearing` (>0.4) | `the-throwing` (>0.6) | at 2.0 | (>0.4) | (>0.6) |
+| --- | --- | --- | --- | --- | --- | --- |
+| ring | 0.646 | open | **open** | 0.498 | open | shut |
+| coat | 0.293 | shut | shut | 0.189 | shut | shut |
+| whistle | 0.147 | shut | shut | 0.105 | shut | shut |
+| knife | 0.090 | shut | shut | 0.073 | shut | shut |
+
+One ring use on `first-water` opens both gates at 3.5. At 2.0 it opens only
+the first.
+
+## Two things no value of the constant fixes
+
+1. **Resonance pays the same whether the outcome engaged with the belonging or
+   ignored it.** `the-asking:settled` is `effects: () => []`. The coat there
+   moves 0.416 of belief — more than any authored outcome in the demo except
+   `the-throwing`'s 0.35 — and the scene has nothing to say about it. Half the
+   rows above are fallback outcomes (`settled`, `bored`, `nothing`, `quiet`,
+   `inconclusive`) where the whole movement is side channel.
+2. **Resonance scales with cast size; authored outcomes do not.** `carried`
+   sums over `scene.cast`, so the two-person `the-asking` and `the-hearing`
+   pay roughly double the one-person scenes for the same use.
+
+## Options
+
+| | change | effect |
+| --- | --- | --- |
+| **A. Leave 3.5** | none | tragedy 0.21 sits level with danger 0.20; 42% of runs reach an ending |
+| **B. 2.0** | one constant | the ring stops out-moving `the-word` and stops opening `the-throwing` on beat one; out-moving pairs 7/14 -> 4/14; costs 7 points of terminal reach, `forgotten` 14% -> 18% |
+| **C. Author the lever into the content** | outcomes read `ctx.resonance` and move belief themselves; `resonanceEffects` stops emitting `belief`/`well` | the only model where belief moves through authored content. Measured cost: on the content as written this is gain 0 — the lever goes inert until every scene has something to say about a use |
+
+**B is the recommendation.** It is one constant, it fixes both complaints that
+survive measurement, and the cost is legible. C is the right end state and is
+a content job, not an engine job: the measurement above says the engine change
+alone would remove the lever rather than relocate it. The first step toward C
+is giving `the-asking:settled` and the other fallback outcomes something to
+say when `ctx.resonance` is set — after which the gain can come down further
+without the lever going quiet.
+
+---
+
+# Decisions taken
+
+**Both projections stay.** `visuals.ts` ships and `shaft-fisheye.ts` does not,
+and the fisheye is not fully reviewed. The end state is both behind a switch
+rather than a deletion, so §6 and E.2 are closed as "keep both"; the work is a
+selector in `main.ts`, which already goes through the `Shaft` contract, not a
+choice between them.

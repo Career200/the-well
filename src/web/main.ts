@@ -22,7 +22,10 @@ if (import.meta.env.DEV) {
   });
 }
 
-const seed = Number(new URLSearchParams(location.search).get('seed') ?? Math.floor(Math.random() * 1e5));
+const asked = Number(new URLSearchParams(location.search).get('seed'));
+const seed = Number.isInteger(asked) && asked > 0 ? asked : Math.floor(Math.random() * 1e5) + 1;
+// The run is reproducible from its seed, so the address bar carries it.
+history.replaceState(null, '', `?seed=${seed}`);
 let game: Game = newGame(pack, seed, { below: true });
 
 const el = <T extends HTMLElement>(id: string): T => {
@@ -38,12 +41,10 @@ const subjects = el('subjects');
  * The four belongings, in reading order. Built once: cells change state, the
  * layout never moves. The five places live in the picture — see `visuals.ts`.
  */
-const CELLS: { id: string; label: string }[] = [
-  { id: 'ring', label: 'the ring' },
-  { id: 'whistle', label: 'the whistle' },
-  { id: 'knife', label: 'the knife' },
-  { id: 'coat', label: 'the coat' },
-];
+const CELLS: { id: string; label: string }[] = pack.objects.map((o) => ({
+  id: o.id,
+  label: `the ${o.name}`,
+}));
 
 const cells = new Map<string, HTMLButtonElement>();
 const labels = new Map<string, HTMLSpanElement>();
@@ -482,10 +483,7 @@ function render(): void {
     signals: game.mode.kind === 'idle' ? PLACES.filter(open) : [],
     asking: game.mode.kind === 'idle',
   });
-  el('shaft').setAttribute(
-    'aria-label',
-    `${water(pack.instrument, game.state.presence.charge)}${inScene ? pack.instrument.atTheRim : ''}`,
-  );
+  shaft.label(`${water(pack.instrument, game.state.presence.charge)}${inScene ? pack.instrument.atTheRim : ''}`);
 
   // Cells are only restyled, never added, removed or reordered.
   for (const cell of CELLS) {

@@ -90,6 +90,9 @@ export function makeShaft(host: HTMLElement, opts: ShaftOptions = {}): Shaft {
   const svg = svgEl('svg');
   svg.setAttribute('preserveAspectRatio', 'none'); // viewBox tracks pixel size
   svg.classList.add('scene');
+  // The picture is the image; the tap targets are siblings of it, so they stay
+  // in the accessibility tree.
+  svg.setAttribute('role', 'img');
 
   const defs = svgEl('defs');
   // Light pooling around the hole it comes through.
@@ -576,6 +579,7 @@ export function makeShaft(host: HTMLElement, opts: ShaftOptions = {}): Shaft {
       else draw();
     },
     bands: () => bands,
+    label: (text: string) => svg.setAttribute('aria-label', text),
     flash: chrome.flash,
     withdraw(): void {
       figure.classList.remove('withdrawing');

@@ -209,7 +209,39 @@ recovered.
 
 ---
 
-## The plan
+## Status
+
+Applied on this branch. `pnpm typecheck`, 138 tests and `vite build` are green.
+
+| step | state |
+| --- | --- |
+| CI workflow | done |
+| policies play beat zero, sweep runs it | done |
+| `carried` from applied deltas, with three tests | done — the prototype's version is not the one taken |
+| dead declarations | done, minus the prose |
+| cells from `pack.objects` | done — measured in Chromium, fits at 360px and up |
+| `makeRng` takes any integer seed | done, with a test |
+| seed written into the URL | **not taken** — it pinned the run against a refresh |
+| `role="img"` on the SVG | taken as a structural change; the reported symptom did not reproduce |
+| `DEMO.md` and `README.md` counts | done |
+| `RunReport` records doors and spines | done |
+| one roll per decision | done |
+| reachability floor and spine coverage | done |
+
+Finding 9 was tested in Chromium at 360px, on the page as it was before the
+change: `#shaft[role="img"]` exposed `button "the water"` in the accessibility
+tree, along with the SVG's own descendants. Chromium does not prune the
+subtree of `role="img"`, and CSS `:focus-visible` is not affected by ARIA at
+all. The change stands on its own terms — the accessible name now sits on the
+element it describes — not on the defect the review reported.
+
+Open, and unchanged by this branch: findings 3, 6, 7, 10, the `step()` split,
+the beat-zero queue, and the 68 "is not" comments. Each is a decision, listed
+under *Decisions, not tasks* below.
+
+---
+
+## The plan as it was written
 
 ### Step 1 — take from the prototype unchanged
 

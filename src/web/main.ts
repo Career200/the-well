@@ -485,10 +485,7 @@ function render(): void {
     signals: game.mode.kind === 'idle' ? PLACES.filter(open) : [],
     asking: game.mode.kind === 'idle',
   });
-  el('shaft').setAttribute(
-    'aria-label',
-    `${water(pack.instrument, game.state.presence.charge)}${inScene ? pack.instrument.atTheRim : ''}`,
-  );
+  shaft.label(`${water(pack.instrument, game.state.presence.charge)}${inScene ? pack.instrument.atTheRim : ''}`);
 
   // Cells are only restyled, never added, removed or reordered.
   for (const cell of CELLS) {

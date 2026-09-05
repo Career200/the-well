@@ -124,6 +124,7 @@ export function makeFisheyeShaft(
   const svg = svgEl('svg');
   svg.setAttribute('preserveAspectRatio', 'none'); // viewBox tracks pixel size
   svg.classList.add('scene');
+  svg.setAttribute('role', 'img');
 
   const defs = svgEl('defs');
   // The rim is a bowed polyline rather than an ellipse, so the light across
@@ -660,6 +661,7 @@ export function makeFisheyeShaft(
       reproject();
     },
     bands: () => bands,
+    label: (text: string) => svg.setAttribute('aria-label', text),
     flash: chrome.flash,
     withdraw: figure.withdraw,
     destroy(): void {

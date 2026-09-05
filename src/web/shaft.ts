@@ -57,6 +57,8 @@ export interface Bands {
 export interface Shaft {
   update(state: ShaftState): void;
   bands(): Bands;
+  /** The picture's own accessible name. The tap targets are outside it. */
+  label(text: string): void;
   /**
    * A place coming out of the dark. Outside `update` because it is timed to
    * the narration, not to the state: the client calls it as the line about

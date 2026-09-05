@@ -1185,5 +1185,3 @@ export function runStatus(game: Game): RunStatus {
   };
 }
 
-export const isQuiet = (game: Game): boolean =>
-  runStatus(game).kind === "quiet";

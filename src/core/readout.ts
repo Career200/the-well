@@ -47,6 +47,3 @@ export const feelBand = (object: ObjectState): 'warm' | 'cooling' | 'nearly-cold
     'cold' as const,
   );
 
-/** Charge left across all belongings. The run's other clock. */
-export const remaining = (state: WorldState): number =>
-  Object.values(state.objects).reduce((sum, o) => sum + o.charge, 0);

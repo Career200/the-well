@@ -100,7 +100,6 @@ export const scenes: Scene[] = [
           { kind: 'emotion', person: 'boy', emotion: 'curiosity', delta: 0.35 },
           { kind: 'belief', belief: 'mystery', delta: 0.2 },
           { kind: 'well', field: 'attention', delta: 0.15 },
-          { kind: 'flag', flag: 'boy-is-curious', value: true },
         ],
       },
       { id: 'bored', when: () => true, effects: () => [{ kind: 'well', field: 'attention', delta: 0.05 }] },

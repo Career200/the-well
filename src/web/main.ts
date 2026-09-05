@@ -33,7 +33,6 @@ const el = <T extends HTMLElement>(id: string): T => {
 
 const log = el('log');
 const subjects = el('subjects');
-const meters = el('meters');
 
 /**
  * The four belongings, in reading order. Built once: cells change state, the
@@ -239,8 +238,6 @@ function act(action: PlayerAction): void {
   }
   render();
 }
-
-const nameOf = (id: string): string => pack.objects.find((o) => o.id === id)?.name ?? id;
 
 /** A cell is live once the thing is out of the silt and its line was said. */
 function onCell(cell: { id: string }): void {
@@ -522,22 +519,7 @@ function render(): void {
     button.title = state.discovered ? feelOf(pack.instrument, state) : 'look closer';
   }
 
-  const { presence, well } = game.state;
-  meters.replaceChildren();
-
-  for (const [label, value] of [
-    ['charge', presence.charge],
-    ['dread', well.dread],
-    ['attention', well.attention],
-    ['lucidity', presence.lucidity],
-  ] as const) {
-    const span = document.createElement('span');
-    span.append(`${label} `);
-    const b = document.createElement('b');
-    b.textContent = '█'.repeat(Math.round(value * 8)).padEnd(8, '·');
-    span.append(b);
-    meters.append(span);
-  }
+  const { presence } = game.state;
 
   // Coda replaces the run and scrolls
   const footer = document.querySelector('footer')!;

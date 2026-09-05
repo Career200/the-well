@@ -418,11 +418,6 @@ button[data-feel='cooling'] { color: var(--cooling); border-color: color-mix(in 
 button[data-feel='nearly-cold'] { color: var(--dim); border-color: color-mix(in oklab, var(--hue) 24%, var(--edge)); }
 button[data-feel='cold'] { color: var(--spent); border-color: var(--edge); }
 
-/* Superseded by the dev readout in `web/dev.ts`. */
-#meters { display: none; }
-
-#meters b { font-weight: normal; color: var(--cold); }
-
 /* ---------------------------------------------------------------------------
    The shaft.
    --------------------------------------------------------------------------- */

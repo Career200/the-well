@@ -15,7 +15,6 @@ export interface BelowSubject {
   plain: string;
   /** Unreachable in beat zero, which tops out at `plain`. */
   named: string;
-  extra?: string;
 }
 
 export type Tier = 'veiled' | 'plain' | 'named';

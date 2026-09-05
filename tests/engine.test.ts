@@ -533,6 +533,54 @@ describe('scene resolution', () => {
   });
 });
 
+describe('resonance reaches the village through the people', () => {
+  const tomasAlone = scenes.find((s) => s.id === 'tomas-alone')!;
+
+  /** `tomas-alone` at its last beat, so the next step resolves it. */
+  const atTheEnd = (guilt: number): Game => {
+    const game = found(newGame(pack, 3), 'knife');
+    return {
+      ...game,
+      state: {
+        ...game.state,
+        people: {
+          ...game.state.people,
+          tomas: { ...game.state.people.tomas!, emotions: { ...game.state.people.tomas!.emotions, guilt } },
+        },
+        objects: { ...game.state.objects, knife: { ...game.state.objects.knife!, discovered: true, charge: 1 } },
+      },
+      mode: { kind: 'scene', scene: 'tomas-alone', ctx: { pressure: 0, resonance: null, beatIndex: tomasAlone.beats.length - 1 } },
+    };
+  };
+
+  const resolve = (guilt: number) => step(atTheEnd(guilt), { kind: 'attune', object: 'knife' }).game.state;
+
+  it('carries the movement that landed, not the movement asked for', () => {
+    // `confession` moves tomas by 0.3 of guilt, which from 0.7 saturates him.
+    // The knife's own 1.225 has nowhere to go, so tragedy is the outcome alone.
+    const after = resolve(0.7);
+    expect(after.people.tomas!.emotions.guilt).toBe(1);
+    expect(after.beliefs.tragedy).toBeCloseTo(0.3, 5);
+  });
+
+  it('carries the headroom the outcome left', () => {
+    // From 0.3: the outcome takes 0.3, the knife takes the remaining 0.4, and
+    // the village hears half of it on top of the outcome's own 0.3.
+    const after = resolve(0.3);
+    expect(after.people.tomas!.emotions.guilt).toBe(1);
+    expect(after.beliefs.tragedy).toBeCloseTo(0.5, 5);
+  });
+
+  it('no belief moves further than the emotion behind it', () => {
+    for (const guilt of [0, 0.2, 0.4, 0.6, 0.8, 1]) {
+      const before = atTheEnd(guilt).state.people.tomas!.emotions.guilt;
+      const after = resolve(guilt);
+      const outcome = after.history[after.history.length - 1]!.outcome === 'confession' ? 0.3 : 0;
+      expect(after.beliefs.tragedy).toBeLessThanOrEqual(outcome + 0.5 * (after.people.tomas!.emotions.guilt - before) + 1e-9);
+    }
+  });
+});
+
 describe('gating', () => {
   it('the throwing cannot fire early', () => {
     const game = newGame(pack, 5);

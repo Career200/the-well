@@ -26,6 +26,7 @@ import type {
   Belief,
   NarrationLine,
   ObjectId,
+  PersonId,
   SceneId,
   WorldState
 } from "./types.js";
@@ -956,11 +957,11 @@ function resolveScene(
     ? []
     : [scene(outcome.text(game.state, ctx))];
   const after: NarrationLine[] = [];
-  const changes = [
-    ...outcome.effects(game.state, ctx),
-    ...resonanceEffects(game, playing, ctx)
-  ];
-  const state = applyEffects(game.state, changes);
+  const outcomeChanges = outcome.effects(game.state, ctx);
+  const afterOutcome = applyEffects(game.state, outcomeChanges);
+  const resonance = resonanceEffects(afterOutcome, game, playing, ctx);
+  const changes = [...outcomeChanges, ...resonance];
+  const state = applyEffects(afterOutcome, resonance);
 
   // The village, on the beat it moved. Only when the beat actually moved it:
   // an outcome that touched nobody has nothing new to be said about.
@@ -997,6 +998,7 @@ function resolveScene(
  * village as well as the person: talk is what the late game reads.
  */
 function resonanceEffects(
+  state: WorldState,
   game: Game,
   scene: Scene,
   ctx: SceneContext
@@ -1005,27 +1007,38 @@ function resonanceEffects(
   const def = objectDef(game, ctx.resonance.object);
   if (!def) return [];
 
-  const effects: Effect[] = [];
-  let carried = 0;
+  const emotions: Effect[] = [];
   for (const person of scene.cast) {
     const delta =
       TUNING.resonanceGain *
       def.power *
       (def.affinity[person] ?? 0.1) *
-      (game.state.objects[def.id]?.charge ?? 0);
+      (state.objects[def.id]?.charge ?? 0);
     if (delta <= 0.01) continue;
-    effects.push({ kind: "emotion", person, emotion: def.emotion, delta });
-    carried += delta;
+    emotions.push({ kind: "emotion", person, emotion: def.emotion, delta });
   }
-  if (carried <= 0.01) return effects;
 
-  effects.push({
-    kind: "belief",
-    belief: BELIEF_OF_EMOTION[def.emotion],
-    delta: carried * 0.5
-  });
-  effects.push({ kind: "well", field: "attention", delta: carried * 0.3 });
-  return effects;
+  // `applyEffect` clamps each emotion to [0,1]. The village reads the people,
+  // so belief and attention follow the movement that landed, not the movement
+  // asked for.
+  const moved = applyEffects(state, emotions);
+  const felt = (w: WorldState, p: PersonId): number =>
+    w.people[p]?.emotions[def.emotion] ?? 0;
+  const carried = scene.cast.reduce(
+    (sum, p) => sum + (felt(moved, p) - felt(state, p)),
+    0
+  );
+  if (carried <= 0.01) return emotions;
+
+  return [
+    ...emotions,
+    {
+      kind: "belief",
+      belief: BELIEF_OF_EMOTION[def.emotion],
+      delta: carried * 0.5
+    },
+    { kind: "well", field: "attention", delta: carried * 0.3 }
+  ];
 }
 
 /**

@@ -31,6 +31,15 @@ for (const policy of only ? [only] : POLICIES) {
     .find((s) => s.id === 'the-throwing')
     ?.outcomes.reduce((sum, o) => sum + (report.reached.get(`the-throwing:${o.id}`) ?? 0), 0);
   console.log(`\n  reached the throwing: ${(((throwing ?? 0) / runs) * 100).toFixed(0)}%`);
+
+  const ended = [...report.doors.values()].reduce((a, b) => a + b, 0);
+  const pct = (n: number): string => `${((n / runs) * 100).toFixed(0).padStart(3)}%`;
+  console.log(`  ended: ${pct(ended)}  ${[...report.doors].map(([d, n]) => `${d} ${pct(n)}`).join('  ')}`);
+  console.log(
+    `  spines: ${
+      pack.coda?.spines.map((sp) => `${sp.id} ${pct(report.spines.get(sp.id) ?? 0)}`).join('  ') ?? '(no coda)'
+    }`,
+  );
   console.log(`  mean beliefs: ${BELIEFS.map((b) => `${b} ${(report.beliefs[b] ?? 0).toFixed(2)}`).join('  ')}`);
 }
 console.log();

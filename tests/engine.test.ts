@@ -391,7 +391,7 @@ describe('the stop', () => {
     let game = newGame(pack, 0);
     let codas = 0;
     for (let t = 0; t < 120; t++) {
-      const result = step(game, choose(game, pack, 'mixed', rng.next()));
+      const result = step(game, choose(game, pack, 'mixed', () => rng.next()));
       game = result.game;
       if (result.lines.some((l) => l.kind === 'coda')) codas++;
     }
@@ -405,7 +405,7 @@ describe('the coda', () => {
     const rng = makeRng(seed * 7919 + 13);
     let game = newGame(pack, seed);
     for (let t = 0; t < 160 && game.mode.kind !== 'over'; t++) {
-      game = step(game, choose(game, pack, policy, rng.next())).game;
+      game = step(game, choose(game, pack, policy, () => rng.next())).game;
     }
     return game;
   };

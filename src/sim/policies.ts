@@ -7,7 +7,7 @@ import type { ContentPack } from '../core/content.js';
 export type Policy = 'idle' | 'haunty' | 'resonant' | 'mixed';
 export const POLICIES: Policy[] = ['idle', 'haunty', 'resonant', 'mixed'];
 
-export function choose(game: Game, pack: ContentPack, policy: Policy, roll: number): PlayerAction {
+export function choose(game: Game, pack: ContentPack, policy: Policy, next: () => number): PlayerAction {
   const discovered = pack.objects.filter((o) => game.state.objects[o.id]?.discovered);
   const undiscovered = pack.objects.filter((o) => {
     const state = game.state.objects[o.id];
@@ -15,15 +15,15 @@ export function choose(game: Game, pack: ContentPack, policy: Policy, roll: numb
   });
   const buried = pack.objects.some((o) => !game.state.objects[o.id]?.found);
   const inScene = game.mode.kind === 'scene';
+  /** One draw per decision: a gate and the choice it opens are independent. */
+  const pick = <T>(xs: T[]): T => xs[Math.floor(next() * xs.length) % xs.length]!;
 
   // Beat zero: the light does not cross for a presence that never pressed, so
   // a policy that cannot press here never leaves the dark. `idle` is the one
   // that is meant not to.
   if (game.mode.kind === 'below') {
     if (policy === 'idle') return { kind: 'wait' };
-    if (undiscovered.length > 0 && roll < 0.3) {
-      return { kind: 'look', object: undiscovered[Math.floor(roll * 7) % undiscovered.length]!.id };
-    }
+    if (undiscovered.length > 0 && next() < 0.3) return { kind: 'look', object: pick(undiscovered).id };
     return game.state.presence.charge >= TUNING.pressCost ? { kind: 'haunt' } : { kind: 'still' };
   }
 
@@ -35,17 +35,19 @@ export function choose(game: Game, pack: ContentPack, policy: Policy, roll: numb
   }
 
   // Every policy but `idle` looks at what it has found.
-  if (policy !== 'idle' && undiscovered.length > 0 && roll < 0.2) {
-    return { kind: 'look', object: undiscovered[Math.floor(roll * 5) % undiscovered.length]!.id };
+  if (policy !== 'idle' && undiscovered.length > 0 && next() < 0.2) {
+    return { kind: 'look', object: pick(undiscovered).id };
   }
 
   // Both levers only reach people, so a stand-in spends them in a scene.
   const wantsHaunt = !inScene ? 0 : policy === 'haunty' ? 0.6 : policy === 'mixed' ? 0.3 : 0;
   const wantsAttune = !inScene ? 0 : policy === 'resonant' ? 0.5 : policy === 'mixed' ? 0.3 : 0;
 
-  if (roll < wantsHaunt) return { kind: 'haunt' };
-  if (roll < wantsHaunt + wantsAttune && discovered.length > 0) {
-    return { kind: 'attune', object: discovered[Math.floor(roll * 13) % discovered.length]!.id };
+  // One draw across the two levers: they are alternatives, not separate gates.
+  const lever = next();
+  if (lever < wantsHaunt) return { kind: 'haunt' };
+  if (lever < wantsHaunt + wantsAttune && discovered.length > 0) {
+    return { kind: 'attune', object: pick(discovered).id };
   }
   return { kind: 'wait' };
 }
@@ -58,29 +60,37 @@ export interface RunOptions {
 export interface RunReport {
   /** "scene:outcome" → how many runs reached it. */
   reached: Map<string, number>;
+  /** Coda spine → runs that ended on it. */
+  spines: Map<string, number>;
+  /** `terminal` or `starved` → runs that ended by it. */
+  doors: Map<string, number>;
   beliefs: Record<string, number>;
   runs: number;
 }
 
 export function sweep(pack: ContentPack, policy: Policy, { runs = 200, turns = 60 }: RunOptions = {}): RunReport {
   const reached = new Map<string, number>();
+  const spines = new Map<string, number>();
+  const doors = new Map<string, number>();
   const beliefs: Record<string, number> = {};
+  const bump = (m: Map<string, number>, k: string): void => void m.set(k, (m.get(k) ?? 0) + 1);
 
   for (let i = 0; i < runs; i++) {
     const rng = makeRng(i * 7919 + 13);
     // The client runs beat zero, so a sweep that skips it measures a game
     // nobody plays.
     let game = newGame(pack, i, { below: true });
-    for (let t = 0; t < turns; t++) game = step(game, choose(game, pack, policy, rng.next())).game;
+    for (let t = 0; t < turns; t++) game = step(game, choose(game, pack, policy, () => rng.next())).game;
 
-    for (const entry of game.state.history) {
-      const key = `${entry.scene}:${entry.outcome}`;
-      reached.set(key, (reached.get(key) ?? 0) + 1);
+    for (const entry of game.state.history) bump(reached, `${entry.scene}:${entry.outcome}`);
+    if (game.mode.kind === 'over') {
+      bump(spines, game.mode.spine);
+      bump(doors, game.mode.door);
     }
     for (const [belief, value] of Object.entries(game.state.beliefs)) {
       beliefs[belief] = (beliefs[belief] ?? 0) + value / runs;
     }
   }
 
-  return { reached, beliefs, runs };
+  return { reached, spines, doors, beliefs, runs };
 }

@@ -1076,3 +1076,259 @@ switched off. Fix the instrument before re-tuning anything it measures.
    existing tests and neither is urgent.
 6. **Pick a projection** when there is a reason to. It is the largest single
    deletion available and the only one blocked purely on taste.
+
+---
+
+# The expensive work, with options
+
+Six decisions. None is expensive because of code volume; each is expensive
+because something has to be decided first. Where evidence can narrow the choice,
+it is given.
+
+---
+
+## E.1 `resonanceGain` — no longer a taste decision
+
+Finding 3 called this a balance problem. On the corrected engine it is a smooth
+dial with no breakpoint. Swept over the same 1,000-run sweep, four policies:
+
+| gain | mean turns | reach the terminal scene | outcomes at 0 | tragedy | danger | `forgotten` |
+| --- | --- | --- | --- | --- | --- | --- |
+| 1.0 | 33 | 25% | 0 | 0.11 | 0.14 | 29% |
+| 2.0 | 33 | 32% | 0 | 0.15 | 0.16 | 20% |
+| 2.5 | 33 | 35% | 0 | 0.18 | 0.17 | 18% |
+| 3.0 | 32 | 38% | 0 | 0.20 | 0.19 | 17% |
+| **3.5 (today)** | 32 | 41% | 0 | 0.22 | 0.20 | 15% |
+| 4.5 | 32 | 45% | 0 | 0.24 | 0.21 | 14% |
+
+`haunted` sits at 0.10 at every value — resonance does not touch it, which is
+the design working. Nothing breaks anywhere in the range. What the dial actually
+trades is **how often a run reaches an ending at all** against **how loud
+tragedy gets**.
+
+| option | what it costs | what it buys |
+| --- | --- | --- |
+| **A. Leave 3.5** | nothing | 41% of runs reach the terminal scene; tragedy is the loudest belief |
+| **B. Drop to 2.0–2.5** | one constant | resonance stops out-moving the outcome it lands with (finding 3's actual complaint); costs ~7 points of terminal reach |
+| **C. Resonance selects rather than adds** | a day; `resonanceEffects` stops emitting `belief`/`well` effects, and outcomes read `ctx.resonance` for their own | the authored outcome becomes the only thing that moves the village — the cleanest model, and the one the demo's thesis implies |
+
+**The per-beat complaint survives even at 3.5.** One ring use still moves tragedy
+0.346 against the outcome's 0.300. The aggregate is modest because most beats
+are not that beat. B is the cheap answer; C is the right one if the question
+being tested is "does changing what the living believe hold up as a system,"
+because under C the belief only ever moves through authored content.
+
+---
+
+## E.2 Which projection
+
+`Shaft` (`web/shaft.ts`) already abstracts both renderers behind one contract,
+so **switching is one line in `main.ts`.** The expensive, irreversible half is
+the deletion.
+
+| | `visuals.ts` (ships) | `shaft-fisheye.ts` (does not) |
+| --- | --- | --- |
+| lines, with its dependencies | 1,755 | 1,764 |
+| tests | 0 | 26 (`projection`, `camera`) |
+| coverage | 0% | 87% / 33% |
+| has a camera | no — `shaftAt()` takes a joint angle | yes — pitch, fov, eye, wall |
+| waterline | shallow arc, which `Bands` assumes throughout | bows under the lens |
+
+**The roadmap already points one way and the review missed it.**
+`docs/NEXT_STEPS.md` lists ambient camera movement as *"not expressible today:
+`shaftAt()` takes a joint angle, not a pitch, so this waits on a projection with
+a camera in it."* That projection exists — it is `shaft-fisheye.ts`. Calling
+those 1,764 lines maintenance surface, as §6 does, is only true if the fisheye
+is a dead end, and the repo's own plan says it is the successor.
+
+| option | cost | consequence |
+| --- | --- | --- |
+| **A. Ship the fisheye, delete the flat one** | 1 line to switch, then verify `Bands` still keeps text off the water under a bowed surface | the shipped renderer becomes the tested one; unblocks the camera work in `NEXT_STEPS` |
+| **B. Keep the flat one, delete the fisheye** | −1,764 lines, plus `projections.html` | the largest deletion available; forecloses ambient camera movement until it is rebuilt |
+| **C. Status quo** | 0 | two renderers, and the tested one is the one nobody plays — the state §6 objects to |
+
+A is the only option that reduces the untested surface rather than the total
+surface. It is also the only one that needs a decision about `Bands` first: a
+bowed waterline moves `waterTop` across the frame, and `fitLog` sets the text
+margins from it every beat.
+
+---
+
+## E.3 Splitting `step()`
+
+278 lines, 37 branch points, and 62 tests holding it in place — which makes this
+the safest large refactor in the tree, not the riskiest.
+
+| option | extracts | leaves `step` at |
+| --- | --- | --- |
+| **A. The action switch** (`engine.ts:420-568`) into `applyAction(game, action) → { game, opening, closing, used, pressed, exhausted }` | 148 lines | ~130 lines |
+| **B. A + the coda block** (`engine.ts:634-659`) into `closeOut(game, door)` | 174 lines | ~104 lines |
+| **C. B + the phase assembly** into a named `Beat` builder | ~200 lines | ~78 lines |
+
+A alone halves it and is a pure cut — the switch already produces exactly those
+six values and nothing else. The six-field return is the honest shape of what a
+beat's action phase yields; if that reads as too wide, the alternative is a
+`Beat` object, which is C.
+
+`advanceBelowMode` (124 lines, 15 branches) is the second candidate and is
+harder: its queue, budget, ledger guard and silence filler are interleaved.
+Given §A.3 measured that queue at depth 2 on 3% of turns, **simplifying that
+mechanism is probably worth more than extracting it.**
+
+---
+
+## E.4 Testing the client that ships
+
+The obstacle is not a missing DOM harness. It is that the geometry was never
+separated from the drawing:
+
+| file | code lines | DOM-bound | pure |
+| --- | --- | --- | --- |
+| `web/main.ts` | 389 | 55 (14%) | **334 (86%)** |
+| `web/visuals.ts` | 409 | 127 (31%) | **282 (69%)** |
+| `web/shaft-fisheye.ts` | 428 | 88 (21%) | 340 (79%) |
+
+The section solver at `visuals.ts:229-313` — 85 lines of homothetic-section
+maths, the binary search, `widthAt`, `sectionAt` — contains **one** DOM call.
+`projection.ts` has 16 tests precisely because its geometry lives in its own
+DOM-free module; `visuals.ts` has none because its does not.
+
+| option | cost | what it can test |
+| --- | --- | --- |
+| **A. Lift the geometry into a pure module** | a refactor, no new dependency | the rails: rim/water/silt stacking, the angle search, `Bands` — the same things `projection.test.ts` already covers for the other renderer |
+| **B. Add jsdom or happy-dom** | a dependency + setup | DOM effects: what `resolve` toggles, what `render` disables, the cell states |
+| **C. Playwright against the built page** | slow, and CI-fragile | the real thing, including the a11y tree |
+
+A is the one that pays: it removes the reason the tests do not exist rather than
+working around it. B is worth adding after A for `render`'s branchy state
+mapping. C answers questions nothing else can — see §W.5 for why that matters
+more than it looks.
+
+---
+
+## E.5 The duplication
+
+Three separate collapses, none large, all in tested code:
+
+| what | sites | shape of the fix |
+| --- | --- | --- |
+| "can the presence push?" | 5 (`engine.ts:544,720`; `main.ts:280,411,556`) | one exported `canPress(state)` |
+| the resonance formula | 3 (`engine.ts:262`, `engine.ts:1010`, `main.ts:359`) | `resonanceEffects` uses `resonanceStrength`; the client reads the applied value off `ctx` instead of rebuilding it |
+| the quiet line | `main.ts:228-233` | `step` emits it the way it emits `stalled` at `engine.ts:665` |
+
+The middle one has a prerequisite: `Resonance.strength` is currently written and
+never read, so the client rebuilds it. Making the engine store what it applied —
+which E.1 option C would force anyway — deletes `strengthOf` outright.
+
+---
+
+## E.6 The 68 "is not" comments
+
+Not a task. A ruling.
+
+| option | consequence |
+| --- | --- |
+| **A. Narrow reading** — the rule bans change-history only | 68 comments are fine; amend `CLAUDE.md` to say so, one sentence |
+| **B. Broad reading** — contrastive definition is also banned | 68 rewrites, and comments like *"A data union rather than callbacks, so effects can be inspected"* lose the clause that explains the design |
+| **C. Leave it** | the largest repeated deviation in the tree stays undecided, and the next reviewer finds it again |
+
+A is one sentence and makes the rule mean what the code already does.
+
+---
+
+# What was done, and where the review was wrong
+
+Continues the `W.` numbering from *Work plan, measured*.
+
+## W.5 What was actually done
+
+Three passes, in this order.
+
+**1. The review** (§1–14). Read every file in `src/`, `tests/`, the root HTML,
+the build and the docs. Ran `pnpm typecheck`, `pnpm test`, `pnpm sim`. Wrote
+throwaway probes to test claims rather than assert them — the resonance clamp,
+the spine sweep, the beat-zero policy trace.
+
+**2. Two claims tested** (Appendix A, B). Instrumented the engine against a
+1,200-run sweep and measured coverage, to answer whether the logic is overblown
+and whether the comments are prose-poisoned.
+
+**3. A prototype** (§W.1–W.4). Applied the cheap fixes in a throwaway worktree
+and measured the diffs instead of estimating them: +56 −64 across 17 files,
+closing eight of fourteen findings, with `tsc`, 125 tests and `vite build` green.
+
+### How each question got answered
+
+| question | answered by | answer |
+| --- | --- | --- |
+| Does the codebase hold up? | §1–14 | The engine does. The seams do not — measurement, CI, and a second renderer. |
+| Is the logic overblown? | A.1–A.5, by instrumentation | Partly, and not where it looks: `probes()`, `weight()` and the phase order all earn their keep; four smaller mechanisms do not. |
+| Are the comments prose-poisoned? | B.1–B.5, by lexing all 757 | No. 3 use second person, 0 record history, 9 restate the code. 68 break one clause of the rule. |
+| What is the cheapest real progress? | W.1–W.2, by prototyping | 16 lines. They re-measure the game and make every downstream question answerable. |
+| What is left, and what does it cost? | E.1–E.6 | Six decisions, none expensive for its code volume. |
+
+## W.6 Where the review was wrong
+
+Stated plainly, because a review that does not audit itself is asking to be
+trusted rather than checked.
+
+**Finding 4 was wrong, and finding 1 predicted it.** §4 declared two endings
+"effectively unreachable" and called `stopped` "the thesis of the pitch, and it
+is not in the game." That verdict came from `pnpm sim` — the tool §1 had already
+proven was measuring a configuration no player is in. Two sections of one
+document, and the second built on ground the first had cut away. Eleven lines in
+`sim/policies.ts` put `stopped` at 7% and `sealed` at 10%. **Nothing about the
+scenes had to change.** The correct move was to prototype the §1 fix before
+writing §4 at all; instead §4 was published with a confidence its own evidence
+did not support.
+
+**The game was never run.** Every finding about the client — §9's accessibility
+claim, §10's tap targets and resize rebuild, §14's refused push — is derived from
+reading CSS, HTML and code. Chromium in this environment would not drive an
+`http://` origin; an accessibility-tree dump was attempted and timed out. §9's
+conclusion follows from the ARIA specification (`role="img"` makes its subtree
+presentational) and the fix was verified in the built bundle, but **no screen
+reader was pointed at the page and no phone was touched.** For §10 in particular,
+"≈80 × 33 px against a 44px minimum" is arithmetic on a stylesheet, not a
+measurement of a rendered button.
+
+**The first weights measurement was confounded, and the tell was ignored for a
+step.** Comparing whole sweeps with `weight()` on and off produced deltas of
+−2, +1, +5, −12 — apparently nothing — because changing which scene fires
+changes the run. It was caught only because the two *unweighted* scenes moved
+further than three weighted ones. That is the same error as finding 4: measuring
+an intervention by an outcome the intervention reroutes.
+
+**§6 called the fisheye renderer maintenance surface without reading the
+roadmap.** `docs/NEXT_STEPS.md` names ambient camera movement as blocked on "a
+projection with a camera in it" — which is exactly what `shaft-fisheye.ts` is.
+Framing 1,764 lines as cost is only right if it is a dead end, and the repo says
+it is the successor. See E.2.
+
+**§3's severity was inflated.** Swept from 1.0 to 4.5 on the corrected engine,
+`resonanceGain` breaks nothing at any value and leaves no outcome at zero. The
+per-beat complaint survives — one use still out-moves its outcome — but "the
+side channel dominates the authored content" overstated a smooth dial.
+
+**Appendix B.4 is only half-settled.** The redundancy metric detects a comment
+that reuses the identifier's words. It cannot detect one that adds words without
+adding understanding. That limit was stated, but it means "the code is more
+self-documenting than the comments imply" was never actually tested — only its
+weakest reading was.
+
+**The coverage numbers are not reproducible from a clean checkout.** They need
+`@vitest/coverage-v8`, which was added, used, and reverted to keep the diff
+clean. The command is in A.1; it is still friction placed on the reader.
+
+## W.7 What held up
+
+The dead-code inventory: every one of the ten items deleted cleanly, 50 lines,
+`tsc` and 125 tests green. The name mismatch in §8 was real and is one line. The
+missing CI in §5 was real. The seed finding in §12 was real. §1 and §2 were both
+confirmed by prototype and both fixed in under twenty lines. The comment
+analysis in Appendix B survived its own measurement, including the parts that
+contradicted the claim it was testing.
+
+The pattern in the failures is one thing: **every wrong call came from trusting
+a measurement whose blind spot had already been identified, rather than from
+missing something.** The instrument was the finding, twice.

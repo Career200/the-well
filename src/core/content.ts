@@ -24,8 +24,6 @@ export interface ObjectDef {
   affinity: Partial<Record<PersonId, number>>;
   /** Strength before affinity. */
   power: number;
-  /** Attunable before being looked at. */
-  discovered?: boolean;
 }
 
 /**
@@ -114,7 +112,7 @@ export function initWorld(pack: ContentPack, seed: number): WorldState {
 
   const objects: WorldState['objects'] = {};
   for (const def of pack.objects) {
-    objects[def.id] = { id: def.id, found: false, discovered: def.discovered ?? false, charge: 1 };
+    objects[def.id] = { id: def.id, found: false, discovered: false, charge: 1 };
   }
 
   return {

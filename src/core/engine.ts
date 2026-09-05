@@ -1193,6 +1193,3 @@ export function runStatus(game: Game): RunStatus {
     reason: `${played.size} of ${total} scenes played; ${ever.length} still possible, but not from here`
   };
 }
-
-export const isQuiet = (game: Game): boolean =>
-  runStatus(game).kind === "quiet";

@@ -3,16 +3,12 @@
  * else may call Math.random().
  */
 export interface Rng {
-  readonly state: number;
   next(): number;
 }
 
 export function makeRng(seed: number): Rng {
   let s = seed >>> 0 || 0x9e3779b9;
   return {
-    get state() {
-      return s;
-    },
     next() {
       // mulberry32
       s = (s + 0x6d2b79f5) >>> 0;

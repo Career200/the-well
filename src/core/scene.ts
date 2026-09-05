@@ -26,8 +26,6 @@ export interface Resonance {
 
 export interface Beat {
   text: (state: WorldState, ctx: SceneContext) => string;
-  /** false for beats that cannot be acted in. Defaults to true. */
-  interactive?: boolean;
 }
 
 export interface Outcome {

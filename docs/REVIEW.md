@@ -685,3 +685,306 @@ Ordered by evidence bought per unit of effort.
    would settle it. 1,764 lines and a third untyped copy is a lot to hold open.
 9. **Collapse the duplicated rules** (§7) and delete the dead declarations
    (§13).
+
+---
+
+# Appendix: two claims, tested
+
+Two concerns were put to this review directly. Both were tested rather than
+judged. The commands are in the sections below; the instrumentation ran against
+the same 1,200-run sweep used above, plus `vitest --coverage`.
+
+Neither claim survives intact. The first is right about four mechanisms and
+wrong about the three that look most elaborate. The second is wrong on every
+metric except one, where it is right on a technicality worth 68 comments.
+
+---
+
+## A. "The logic complexity is overblown in parts without any benefit"
+
+### A.1 Method
+
+For each mechanism, the question asked was: *does removing it change an answer?*
+Where a cheaper version could be written, both were run against the same states
+and the outputs compared, over the same 1,200-run sweep used above. Coverage
+figures come from:
+
+```sh
+pnpm add -D @vitest/coverage-v8@2.1.9
+npx vitest run --coverage.enabled --coverage.provider=v8 \
+  --coverage.reporter=text --coverage.include='src/**'
+```
+
+The dependency is not committed; add it to reproduce the numbers.
+
+### A.2 The three most elaborate mechanisms all earn their keep
+
+**`probes()` and `couldStillFire` — the strongest disconfirmation.**
+`core/engine.ts:1123-1158` builds three hypothetical worlds (as-is, best, worst,
+the best padded with 32 synthetic history entries) and tests each scene's
+`requires` against all three. It looks like the most speculative code in the
+engine. It is load-bearing:
+
+```
+times runStatus reached couldStillFire at all: 4723
+verdict "quiet" WITH probe worlds:               95
+verdict "quiet" WITHOUT probe worlds:          4723
+the two disagreed:                             4628  (98.0%)
+```
+
+Without the probe worlds, every one of those 4,723 states is judged `quiet` —
+"nothing can fire on any future this world can reach" — because the history-count
+gates on `tomas-alone`, `the-hearing` and `the-throwing` fail against the
+*current* history. `doorOut` reads `quiet` as `starved`, so the cheaper version
+ends the run the first beat no scene happens to be eligible. The 25 lines prevent
+4,628 false endings.
+
+**`Scene.weight()` and `pickWeighted`.** Measured at each director decision, so
+diverging trajectories cannot confound it — the weighted distribution against the
+uniform one the director would use without them:
+
+```
+decisions with more than one candidate:                    3619
+decisions where the weights were all equal (a no-op):       849  (23.5%)
+mean total-variation distance from uniform:               0.160
+worst:                                                    0.357
+```
+
+0.160 means 16% of the probability mass moves, on average, every time the
+director picks. That is a real dial, not decoration.
+
+*A note on method:* the first attempt at this compared full sweeps with weights
+on and off and produced deltas of −2, +1, +5, −12 — apparently nothing. That
+measurement was wrong: changing which scene fires changes the whole run, so the
+noise from divergent trajectories swamped the effect. The two unweighted scenes
+moved further than three of the four weighted ones, which is the tell. Measuring
+at the decision point removes the confound.
+
+**The four-phase narration order.** `step` splits a beat into
+`opening → answer.lines → closing → answer.after` (`engine.ts:398-405, 622`)
+rather than concatenating. The phases are distinguishable on 1,640 beats — an
+`attune` whose `release` line has to sit *after* the world's response to the use
+and *before* the readout. Across the sweep:
+
+```
+multi-line beats:                                  7638
+attune beats needing the interleave:               1640
+```
+
+### A.3 Four mechanisms that do not
+
+**The beat-zero line queue.** `BelowPhase.pending`, `BELOW_TUNING.linesPerTurn`,
+and the `budget`/`released`/`queue`/`finishing` block at `engine.ts:816-833` are
+roughly 40 lines of scheduling. Measured over every beat-zero turn in 1,200 runs:
+
+```
+turns where pending held anything:  600   (~3% of beat-zero turns)
+deepest the queue ever got:           2
+```
+
+A two-deep queue that fills on 3% of turns.
+
+**The places.** `QUEUED` / `OPEN` / `SEEN(id, tier)` are three flag families
+(`engine.ts:51-53`) driving `queueSubject`, `openSubject`, `ambientTier`,
+`answered`, `ASKABLE` and `isAmbient` — about 45 lines of engine. What they
+deliver:
+
+```
+times a place became answerable, across 1200 runs: 1324  (1.10 per run)
+```
+
+`docs/DEMO.md:265` estimates "2–4 times a run"; measured, it is 1.10. And since
+no policy ever emits a `look` at a place, none of those 1,324 openings is ever
+consumed by the sim — the surface is both thin and unmeasured.
+
+**`core/readout.ts`.** A generic `band()` helper plus `water()` (5 bands),
+`feelOf()` (4) and `feelBand()` (4) — 13 authored thresholds:
+
+```
+core/readout.ts   21.62% stmts | 100% branch | 20% funcs | lines 15-24, 28-36, 40-48, 52 uncovered
+```
+
+Every function except `band` is untested. Their consumers, in full: one
+`aria-label` (`main.ts:490`), one `title` that does not exist on touch
+(`main.ts:522`), one CSS data attribute (`main.ts:521`), and `remaining()`, which
+nothing calls. `band()` itself has exactly one real caller — `tierOf` in
+`below.ts`.
+
+**Guards that cannot fire.** Coverage names them precisely:
+
+| guard | where | why it cannot fire |
+| --- | --- | --- |
+| `if (!person) return state` ×2, `if (!object) return state` ×2 | `effects.ts:22,51,56,64` | content ids are checked by `tsc` and by `every effect names something real` |
+| `resolveOutcome`'s no-match fallback and `throw` | `scene.ts:62-65` (file at 55.55%) | every scene ends in `when: () => true` |
+| `pickWeighted`'s final `return items[items.length-1]` | `rng.ts:37-38` | unreachable when weights are positive |
+| `CHANNELS[...] ?? DEFAULT` | `ledger.ts:31` | every channel key used maps to `ambient`, `band` or `below` |
+| `Rng.state` getter | `rng.ts:13-15` | declared on the public interface; read by nothing in `src/` or `tests/` |
+
+The ledger's channel table is the interesting case: two of its three
+configurations are exercised, `DEFAULT` is dead, and the comment above it —
+"Anything unlisted remembers one line" — describes a case that cannot arise.
+Channel depths observed: `ambient` 1, `band:*` up to 3, `below` up to 11.
+
+### A.4 Function size
+
+Approximate branch counts, by keyword:
+
+| function | file | lines | branch points |
+| --- | --- | --- | --- |
+| `makeFisheyeShaft` | web/shaft-fisheye.ts | 557 | 52 |
+| `makeShaft` | web/visuals.ts | 507 | 36 |
+| `step` | core/engine.ts | 278 | 37 |
+| `advanceBelowMode` | core/engine.ts | 124 | 15 |
+| `render` | web/main.ts | 102 | 15 |
+
+The two 500-line ones are closure factories — module-shaped, and their length is
+mostly declarations. `step` at 278 lines and 37 branch points is the real one:
+it holds the action switch, the gathering rule, the coat special case, the four
+phases, the lucidity queue, the coda and the stop line.
+
+### A.5 Verdict on A
+
+**Partly true, and not where it looks.** The elaborate-seeming machinery —
+probing hypothetical worlds, weighted scene selection, four-phase narration —
+is all doing measurable work. What is overblown is smaller and duller: a
+two-deep queue with 40 lines of scheduler, a three-flag system delivering 1.1
+events a run, a banding layer with 13 thresholds and no test, and eight guards
+that cannot fire. The single largest complexity cost is not a mechanism at all;
+it is `step` being one 278-line function.
+
+---
+
+## B. "The comments are still poisoned by prose language, and there are more of
+them than needed"
+
+### B.1 Method
+
+All 757 comments in `src/` outside `content/prose/**` were extracted with a
+hand-written lexer that masks string and template literals first, so `'//gc.zgo.at'`
+and `'http://www.w3.org/2000/svg'` cannot be mistaken for comments. Each was
+classified against the rule in `CLAUDE.md`:
+
+> Everything else — engine, UI, tests, code comments, commit messages — is plain
+> engineering prose: state what the code does and in what units. Do not record
+> why a thing changed, what it used to be, or what it is not.
+
+### B.2 On register
+
+| | count | share |
+| --- | --- | --- |
+| use second person (`you` / `your`) | **3** | 0.4% |
+| record history, supersession or what a thing used to be | **0** | 0% |
+| hedge (`probably`, `might`, `unclear`) | 1 (a false positive: "keeps the button honest") | 0.1% |
+| name something from the fiction | 197 | 26% |
+| say what a thing **is not** | **68** | **9%** |
+
+All three second-person comments are in one place, describing what a coda slot's
+*prose* says rather than what the code does:
+
+```
+core/coda.ts:36     What you are, in as many words as you earned.
+core/coda.ts:70     Spine, then what else is true, then what they will say, then what you are.
+core/content.ts:88  Pulling the coat over yourself, and missing whoever came.
+```
+
+The 26% that "name something from the fiction" are not a breach. `docs/DEMO.md`
+sets that vocabulary deliberately — "Terms in **bold** are the ones to use" —
+and *presence*, *rim*, *silt*, *village*, *belonging* are the project's domain
+terms, several of them literal field names in `types.ts`. A comment reading
+"A place is not asked while somebody is at the rim" is a precise statement about
+the `mode.kind === 'scene'` guard at `engine.ts:429`, in the vocabulary the
+repository mandates.
+
+**The one real breach is the 9%.** `CLAUDE.md` forbids recording "what it is
+not", and 68 comments do exactly that:
+
+```
+core/effects.ts:4     A data union rather than callbacks, so effects can be inspected …
+web/analytics.ts:3    Injected from JS rather than the HTML so `PROD` can gate it.
+web/camera.ts:90      Smoothstep, so a move leaves and arrives at rest rather than at speed.
+core/below.ts:36      … The silt is not on it: it resolves when the first belonging comes out of it.
+```
+
+In mitigation, these are contrastive *definitions*, not change history, and the
+rule's stated reason — "that is what git history is for" — does not apply to
+them. But the letter of the rule is the letter of the rule, and 68 is the
+largest single deviation found.
+
+Nine more comments carry an aphoristic tail clause — "never a write", "the whole
+ending stays", "never says which". Stylistic, 1%.
+
+### B.3 On volume
+
+| | |
+| --- | --- |
+| comments in `src/` outside `content/prose/**` | 757 |
+| comment-only lines vs code lines | 1,272 / 4,143 = **31%** |
+| comment characters vs file characters | 61,801 / 209,626 = **29%** |
+| mean words per comment | 15.0 |
+| comments of 40+ words | 38 (5%) |
+| comments of 3+ sentences | 35 (5%) |
+
+31% is high in absolute terms. But the density tracks how non-obvious the code
+is, which is the opposite of decoration:
+
+| densest | | sparsest | |
+| --- | --- | --- | --- |
+| `web/shaft.ts` | 61% | `content/coda.ts` | 2% |
+| `web/water.ts` | 57% | `content/scenes.ts` | 4% |
+| `web/grain.ts` | 53% | `core/effects.ts` | 5% |
+| `web/sky.ts` | 48% | `web/svg.ts` | 8% |
+| `core/types.ts` | 48% | `content/prose/**` | 12% |
+
+The four densest are a pure interface file, a geometry module, a table of
+unlabelled tuning constants, and a table of gradient stops — the four places
+where a name genuinely cannot carry the units. The sparsest are declarative
+content and one-line helpers. **The least-commented directory in the repository
+is `content/prose/`**, at 12%: the files that actually hold prose are the ones
+that need no explaining. The register split holds in both directions.
+
+### B.4 On self-documentation
+
+For every comment, its content words were compared against the identifiers on
+the three lines of code it introduces (camelCase and snake_case split into
+parts, stopwords removed):
+
+```
+comments with adjacent code to compare against:                  754
+restate the identifiers below them (≤34% new words):               9   (1%)
+carry information the identifiers do not:                        745  (99%)
+```
+
+The nine, in full, are mostly section banners (`---- the silt ----`) and one
+genuine redundancy: `web/camera.ts:34`, "Where the camera rests." above
+`rest: Camera`.
+
+**The limit of this metric, stated plainly:** it detects a comment that reuses
+the identifier's words. It cannot detect a comment that introduces new words
+without introducing new understanding. Hand-reading the densest files did not
+turn up a class of those — `DOT_SPACING = [14, 13, 12, 11, 10]` needs "Halftone
+dot spacing, px. Larger is coarser and cheaper to draw," and no name would carry
+it — but that half of the claim is judgement, and this measurement does not
+settle it.
+
+### B.5 Verdict on B
+
+**Disproved on register and on volume; upheld on one clause.** Second person
+appears 3 times in 757 comments. Nothing in the repository records what a thing
+used to be or why it changed — the part of the rule most codebases break, this
+one keeps completely. One comment in a hundred restates the code beneath it. The
+fictional vocabulary is the mandated domain vocabulary, not leakage.
+
+What is true: 68 comments (9%) say what a thing is not, which the rule forbids in
+those words; three comments record an unsettled decision (all three about the
+same `wash`/`grain` fork in `web/water.ts`); and 31% comment-to-code is high
+enough that it is worth knowing it is concentrated in the files that need it.
+
+### B.6 What this changes in the review above
+
+Nothing is retracted. One item is added to §14 (*Smaller things*):
+
+> **68 comments say what a thing is not.** `CLAUDE.md` forbids recording "what
+> it is not". `effects.ts:4`, `analytics.ts:3`, `camera.ts:90` and 65 others do.
+> They are contrastive definitions rather than change history, so they miss the
+> rule's stated reason while breaking its wording — worth a decision either way,
+> since it is the most-repeated deviation in the tree.

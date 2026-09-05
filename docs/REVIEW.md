@@ -232,8 +232,13 @@ outcome it lands with would keep it there.
 - `sealed` — 0.1%.
 
 `stopped` is the only ending in which the player changes what happens rather
-than what is believed about it. It is the thesis of the pitch, and it is not in
-the game.
+than what is believed about it.
+
+> **Corrected by the work plan below.** This finding blamed the game. It was the
+> measurement. Both outcomes are reachable once the stand-in players can leave
+> beat zero — an 11-line change to `sim/policies.ts` — after which `stopped`
+> runs at 7% and `sealed` at 10% under `haunty`, and all 19 outcomes fire.
+> Nothing about the scenes had to change. See *Work plan* §W.2.
 
 `README.md:64` tells a contributor adding a scene to "run `pnpm sim` and check
 the new outcomes are not at 0%". `the-throwing:stopped` prints `0%  stopped  ·`
@@ -988,3 +993,86 @@ Nothing is retracted. One item is added to §14 (*Smaller things*):
 > They are contrastive definitions rather than change history, so they miss the
 > rule's stated reason while breaking its wording — worth a decision either way,
 > since it is the most-repeated deviation in the tree.
+
+---
+
+# Work plan, measured
+
+Every fix below was either applied in a throwaway worktree and measured, or
+sized by counting its edit sites. Nothing here is estimated by feel. The
+prototype passes `tsc --noEmit`, all 125 tests, and `vite build`.
+
+The headline: **the two highest-value fixes are 16 lines between them, and they
+change the answer to most of the rest.**
+
+---
+
+## W.1 What was prototyped, and what it cost
+
+| fix | findings closed | files | diff | verified by |
+| --- | --- | --- | --- | --- |
+| `carried` from applied deltas | 2 | 1 | **+5 −1** | probe + 125 tests |
+| policies can play beat zero | 1, 4 | 1 | **+11** | full re-sweep |
+| delete dead code | 13 | 11 | **+2 −50** | `tsc`, 125 tests |
+| cells from the pack, seed in the URL, places out of `role="img"`, CI workflow | 5, 8, 9, 12 | 7 | **+38 −13** | `tsc`, tests, `vite build` |
+| **total** | **1, 2, 4, 5, 8, 9, 12, 13** | **17** | **+56 −64** | net **−8 lines** |
+
+Eight of the fourteen findings, for a change that leaves the tree smaller than
+it started.
+
+## W.2 The 16 lines that re-measure the game
+
+`sim/policies.ts` gains a beat-zero branch (11 lines) and `resonanceEffects`
+clamps to headroom (5 lines). Same 1,600-run sweep, before and after:
+
+| | before | after |
+| --- | --- | --- |
+| outcomes never reached (of 19) | 3 | **0** |
+| `the-throwing:stopped` | 0.0% | 1.9% overall, **7% under `haunty`** |
+| `sealed` | 0.1% | 2.7% overall, **10% under `haunty`** |
+| runs reaching the terminal scene | 20% | **43%** |
+| runs that starve | 80% | 57% |
+| `never-woke` | 50% | 25% (all of it `idle`, which is the point) |
+| `forgotten` | 21.9% | 13.9% |
+| policies that cannot leave beat zero | 2 of 4 | **0 of 4** |
+
+The correctness fix behaves as intended: a saturated Anna now yields
+`tragedy 0.300` — the authored outcome alone — where she previously yielded
+`0.646`.
+
+**This retracts most of finding 4.** The two "unreachable" endings were
+reachable the whole time. The stand-in players could not get out of the dark to
+find them, and the tool that was supposed to notice was running with beat zero
+switched off. Fix the instrument before re-tuning anything it measures.
+
+## W.3 Sized but not prototyped
+
+| fix | finding | size | what makes it cost that |
+| --- | --- | --- | --- |
+| correct `DEMO.md` and `REWRITE.md` | 11 | 7 edit sites + 1 table | pure clerical |
+| `ResizeObserver` coalescing | 10 | ~6 lines, `visuals.ts:566` | mechanical, but `visuals.ts` is 0% covered — needs a manual check on a phone |
+| raise cells to 44px | 10 | 2 CSS rules (`style.css:255-261`, `287`) | needs a visual judgement call, not just a number |
+| refused push must not agitate the water | 14 | 1 line, `main.ts:216` | trivial once decided |
+| collapse the push-cost rule | 7 | 5 sites → 1 predicate | 5 call sites, all in code with tests |
+| collapse the three resonance implementations | 7 | 3 sites; delete `Resonance.strength` | the client needs a value the engine does not expose yet |
+| move the quiet line into `step` | 7 | ~8 lines across `engine.ts`, `main.ts` | changes narration order; the tests will say if it is wrong |
+| re-tune `resonanceGain` | 3 | 1 constant + a re-sweep | **a design decision.** Cheap to evaluate now that the sim works |
+| first test for `visuals.ts` | 6 | new harness | needs jsdom or a headless DOM; nothing exists to build on |
+| pick a projection | 6 | deleting the loser is ~1,764 lines | the deletion is trivial; **the decision is the whole cost** |
+| split `step()` | A.4 | 278 lines → ~5 functions | mechanical, and the 62 engine tests make it safe — but it is a day, not an hour |
+| the 68 "is not" comments | B.2 | 68 sites | **a ruling, not a task.** Decide whether the rule means change-history or also contrastive definition, then it is find-and-replace or nothing |
+
+## W.4 Order
+
+1. **W.1's four commits.** Net −8 lines, closes eight findings, and the CI
+   workflow makes everything after it hold.
+2. **Re-read the sweep.** It now describes the game as played. Nothing about
+   balance is worth arguing before this.
+3. **Re-tune `resonanceGain`** against the corrected numbers (finding 3), which
+   is the only balance decision left with real evidence behind it.
+4. **The mobile pass** — tap targets, the resize rebuild, the refused push.
+   Small, and the demo is played on a phone.
+5. **The duplication** (finding 7), then **`step()`**. Both are safe under the
+   existing tests and neither is urgent.
+6. **Pick a projection** when there is a reason to. It is the largest single
+   deletion available and the only one blocked purely on taste.

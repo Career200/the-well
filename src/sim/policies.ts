@@ -16,6 +16,17 @@ export function choose(game: Game, pack: ContentPack, policy: Policy, roll: numb
   const buried = pack.objects.some((o) => !game.state.objects[o.id]?.found);
   const inScene = game.mode.kind === 'scene';
 
+  // Beat zero: the light does not cross for a presence that never pressed, so
+  // a policy that cannot press here never leaves the dark. `idle` is the one
+  // that is meant not to.
+  if (game.mode.kind === 'below') {
+    if (policy === 'idle') return { kind: 'wait' };
+    if (undiscovered.length > 0 && roll < 0.3) {
+      return { kind: 'look', object: undiscovered[Math.floor(roll * 7) % undiscovered.length]!.id };
+    }
+    return game.state.presence.charge >= TUNING.pressCost ? { kind: 'haunt' } : { kind: 'still' };
+  }
+
   // Buried belongings only come up on a press at an empty rim. Only policies
   // that use one dig, and only above two presses' worth of charge.
   const digs = policy === 'resonant' || policy === 'mixed';

@@ -118,13 +118,13 @@ exception is the coat — see **lucidity**.
 ### The nine subjects
 
 **the nine** — everything `look` can address. Five **ambients** and four
-**belongings**. Defined as data in `content/below.ts`.
+**belongings**. Defined as data in `content/prose/below.ts`.
 
 **ambient** — one of `water`, `cold`, `walls`, `sky`, `silt`. A *subject*: it has
 prose at three tiers.
 
 **place** — one of `sky`, `walls`, `water`, `silt`. A *tap region* in the picture
-(`PLACES` in `web/visuals.ts`), drawn as a full-width band over the shaft.
+(`PLACES` in `web/shaft.ts`), drawn as a full-width band over the shaft.
 
 The two lists are deliberately different. **The cold is an ambient with no place**:
 it has nothing to draw and nowhere to tap, so it is excluded from `ASKABLE` in the
@@ -160,7 +160,7 @@ from here), `quiet` (nothing can fire from any reachable future). Not an ending.
 **door** — how a run ends: `terminal` (a scene marked terminal played) or
 `starved` (nothing came). Feeds the coda.
 
-**the coda** — the ending. Twelve spines in `content/coda.ts`, first match wins.
+**the coda** — the ending. Seven spines in `content/coda.ts`, first match wins.
 `forgotten` is the one that erodes as it is read.
 
 **register** — `LineKind`: `scene`, `fact`, `idle`, `coda`. The engine decides;
@@ -188,9 +188,9 @@ read. Driven by narration timing, not by state.
 | scenes             | 6 (1 terminal: `the-throwing`)                              | `content/scenes.ts`                  |
 | people             | 5 (4 present at start; the stranger enters on the throwing) | `content/people.ts`                  |
 | belongings         | 4                                                           | `content/objects.ts`                 |
-| ambients / places  | 5 / 4                                                       | `content/below.ts`, `web/visuals.ts` |
+| ambients / places  | 5 / 4                                                       | `content/prose/below.ts`, `web/shaft.ts` |
 | beliefs / emotions | 4 / 6                                                       | `core/types.ts`                      |
-| coda spines        | 12                                                          | `content/coda.ts`                    |
+| coda spines        | 7                                                           | `content/coda.ts`                    |
 | doors              | 2                                                           | `core/coda.ts`                       |
 | controls on screen | 2 verb buttons + 4 belonging cells + 4 places               | `index.html`, `web/visuals.ts`       |
 
@@ -208,7 +208,7 @@ scene or on starvation.
 | the presence   | 4 verbs, 2 levers                  | same levers, plus deterioration and the stranger    |
 | self-knowledge | lucidity, drives tier prose only   | the first act; gates resonance entirely             |
 | ambients       | 5 subjects, 3 tiers, `look`        | ordinary situations in the deck                     |
-| ending         | 12 coda spines                     | verdict + roads resolving                           |
+| ending         | 7 coda spines                      | verdict + roads resolving                           |
 | escalation     | `dread` colours outcome selection  | `HORRORS.md`, three roads                           |
 | stranger       | flag set, nothing happens          | a scene cluster                                     |
 | renderer       | scrolling text over an SVG shaft   | first-person 3D, eventually                         |
@@ -266,11 +266,11 @@ Honest list, so nobody rediscovers these:
   the whole game.
 - **The verbs are not in the picture.** Push and be still live in the footer,
   though the shaft renders nothing but their consequences.
-- **`extra` is dead content.** All eight strings in `content/below.ts` are authored
-  and read by no code.
+- **`extra` is dead content.** All seven strings in `content/prose/below.ts` are
+  authored and read by no code.
 - **`readout.ts` is barely connected.** `water()` is used only for the shaft's
-  aria-label; `remaining()` is used nowhere at all. `#meters` is still built on
-  every render and then hidden by CSS, so it is dead markup.
+  aria-label, `feelOf()` for one `title`, `feelBand()` for one data attribute,
+  and no test covers any of the three.
 - **The sim never touches the ambients.** No policy in `sim/policies.ts` emits a
   `look` at a place, so the reachability sweep has zero coverage of that surface.
   Anything added there is untested by `pnpm sim`.

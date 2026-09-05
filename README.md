@@ -54,11 +54,12 @@ Both are discovered, never explained:
 | **Resonance** | hold attention on a belonging when someone is up there | that object's emotion → `tragedy`, `mystery` |
 
 Beliefs gate the late game, so the two levers reach different endings. `pnpm sim`
-prints how often each outcome is actually reached per playstyle; `tests/reachability.test.ts`
-fails the build if a branch becomes impossible.
+prints how often each outcome, ending and door is reached per playstyle;
+`tests/reachability.test.ts` fails the build when an outcome or a coda spine
+drops below 3 hits in 120 runs under every policy.
 
 ## Adding a scene
 
 Add it to `src/content/scenes.ts` with beats, `requires`, and outcomes ordered
 most-specific first (the last outcome should always be a `when: () => true`
-fallback). Then run `pnpm sim` and check the new outcomes are not at 0%.
+fallback). Then run `pnpm sim` and check the new outcomes clear 3%.

@@ -68,7 +68,9 @@ export function sweep(pack: ContentPack, policy: Policy, { runs = 200, turns = 6
 
   for (let i = 0; i < runs; i++) {
     const rng = makeRng(i * 7919 + 13);
-    let game = newGame(pack, i);
+    // The client runs beat zero, so a sweep that skips it measures a game
+    // nobody plays.
+    let game = newGame(pack, i, { below: true });
     for (let t = 0; t < turns; t++) game = step(game, choose(game, pack, policy, rng.next())).game;
 
     for (const entry of game.state.history) {
